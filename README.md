@@ -2,7 +2,7 @@
 
 Cold email sequencer for restaurant owner outreach. Built on AWS SES + Supabase.
 
-Imports contacts from Outscraper and Apollo, merges them by domain, and runs a 5-email sequence with automatic timing logic — pausing the moment anyone replies.
+Imports owner contacts from Apollo and runs a 5-email sequence with automatic timing logic — pausing the moment anyone replies. Includes a local web UI for non-technical reviewers to monitor outreach and update contact statuses.
 
 ---
 
@@ -13,7 +13,8 @@ Imports contacts from Outscraper and Apollo, merges them by domain, and runs a 5
 | Email sending | AWS SES |
 | Database | Supabase (PostgreSQL) |
 | CLI | Click + Rich |
-| Contact sources | Outscraper (restaurants) + Apollo (owners) |
+| Web UI (local) | FastAPI + Jinja2 + HTMX |
+| Contact source | Apollo (restaurant owner contacts) |
 
 ---
 
@@ -32,9 +33,12 @@ dialtone-outreach/
 │   ├── sequence.py             # Timing logic — who gets what email today
 │   ├── templates.py            # All 5 email templates (Jinja2)
 │   └── runner.py               # Orchestration loop + terminal dashboard
-└── scripts/
-    ├── import_contacts.py      # CSV importer (Outscraper or Apollo)
-    └── merge_contacts.py       # Domain-match merge
+├── scripts/
+│   └── import_contacts.py      # Apollo CSV importer
+└── web/                        # Local FastAPI UI for non-technical reviewers
+    ├── app.py                  # FastAPI application + routes
+    ├── templates/              # Jinja2 page templates (HTMX-driven)
+    └── static/                 # CSS + minimal JS
 ```
 
 ---
@@ -100,11 +104,6 @@ Check your inbox and click the verification link.
 
 ### Step 1 — Build your contact list
 
-**Export from Outscraper** (Google Maps scraper):
-- Query: `restaurants Nashville TN`
-- Fields: name, phone, website, email, rating, reviews, category, address, city, state
-- Save as `outscraper_export.csv`
-
 **Export from Apollo** (owner contact finder):
 - Search: Title=Owner, Industry=Restaurants, Location=Nashville TN, Company size=1-50
 - Save as `apollo_export.csv`
@@ -112,30 +111,13 @@ Check your inbox and click the verification link.
 ### Step 2 — Import
 
 ```bash
-# Import restaurant records (filters: rating 3.5-4.5, reviews 50-800, indie only)
-python cli.py import --source outscraper --file outscraper_export.csv
-
-# Import owner contact records
 python cli.py import --source apollo --file apollo_export.csv
 
-# Preview without writing (add --dry-run to either command)
-python cli.py import --source outscraper --file outscraper_export.csv --dry-run
+# Preview without writing
+python cli.py import --source apollo --file apollo_export.csv --dry-run
 ```
 
-### Step 3 — Merge
-
-Domain-match restaurant records with owner contact records:
-
-```bash
-python cli.py merge
-
-# Preview matches first
-python cli.py merge --dry-run
-```
-
-This fills `owner_first`, `owner_last`, `owner_email`, and `owner_phone` on restaurant records that have a matching domain in the Apollo import.
-
-### Step 4 — Preview today's run
+### Step 3 — Preview today's run
 
 Always dry-run first:
 
@@ -145,7 +127,7 @@ python cli.py run --dry-run
 
 Output shows exactly which contacts would receive which email, with subject lines.
 
-### Step 5 — Send
+### Step 4 — Send
 
 ```bash
 python cli.py run
@@ -153,7 +135,7 @@ python cli.py run
 
 Sends up to `DAILY_SEND_LIMIT` emails (default: 20). Ordered by `lead_score` descending — your hottest leads always go first.
 
-### Step 6 — Monitor
+### Step 5 — Monitor
 
 ```bash
 # Status breakdown table
@@ -202,7 +184,7 @@ python cli.py contact --domain rossieskitchen.com
 | `not_interested` | Explicitly opted out — STOP sequence |
 | `invalid` | Bad email / not a real contact — STOP sequence |
 
-Update status manually in Supabase or via a future admin UI when contacts reply, book a demo, etc.
+Update status from the local web UI (see below) or directly in Supabase when contacts reply, book a demo, etc.
 
 ---
 
@@ -219,6 +201,34 @@ Score contacts 1–5 to control outreach priority:
 | 1 | Minimal info, low priority |
 
 Higher-scored contacts always send first when the daily limit is reached.
+
+---
+
+## Local Web UI
+
+A lightweight FastAPI + Jinja2 + HTMX app for non-technical reviewers to monitor outreach and update contact statuses without touching the CLI or Supabase. Runs locally only — no auth, no public exposure.
+
+### Start the server
+
+```bash
+uvicorn web.app:app --reload --port 8000
+# then open http://localhost:8000
+```
+
+### Screens
+
+| Screen | Purpose |
+|--------|---------|
+| **Dashboard** | Status counts, conversion funnel (Email → Demo → Pilot → Customer), emails sent today |
+| **Contacts** | Searchable, filterable list (by status, lead score, city); click a row to open detail |
+| **Contact detail** | Owner info, full email history (subject, sent, opened, replied), status edit buttons (`replied`, `demo_booked`, `pilot`, `customer`, `not_interested`, `invalid`), notes editor |
+| **Run preview** | Read-only view of `cli.py run --dry-run` output — shows exactly which contacts would receive which email today |
+
+### Scope
+
+- **Read + status edits only.** Sending emails stays in the CLI (`python cli.py run`) so non-technical users can't accidentally trigger a live send.
+- Reuses [outreach/db.py](outreach/db.py) and [outreach/templates.py](outreach/templates.py) — no duplication of business logic.
+- Server-rendered Jinja2 pages with HTMX for interactive bits (status buttons, search). No JavaScript build step.
 
 ---
 
