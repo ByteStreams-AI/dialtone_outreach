@@ -41,9 +41,10 @@ console = Console()
 DEFAULT_CSV = Path(__file__).resolve().parent.parent / "docs" / "apollo-contacts-export.csv"
 DEFAULT_OUT = Path(__file__).resolve().parent.parent / "developer" / "template-previews"
 
-# Catches both opening and closing Jinja delimiters, with or without
-# whitespace, so we don't miss a regression of the brace-leak bug.
-_JINJA_ARTIFACT_RE = re.compile(r"\{\{\s*\w+|\}\}")
+# Matches a complete leftover ``{{ ... }}`` pair so a bare ``}}`` (e.g.
+# inside a Python dict repr that happens to be quoted in the body) does
+# not produce a false positive.
+_JINJA_ARTIFACT_RE = re.compile(r"\{\{[^}]+\}\}")
 
 
 def _slug(value: str) -> str:

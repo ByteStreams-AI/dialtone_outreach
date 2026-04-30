@@ -19,6 +19,7 @@ and a working unsubscribe link in both the HTML and plain-text bodies.
 from __future__ import annotations
 
 import re
+from html import escape as html_escape
 from urllib.parse import quote
 
 from jinja2 import Template
@@ -167,9 +168,13 @@ def _html_wrap(text: str, *, unsubscribe_url: str, business_address: str,
     Returns:
         A complete HTML document suitable for the SES ``Body.Html`` field.
     """
+    # html.escape() ensures personalisation tokens that contain HTML
+    # special chars (e.g. "Bob & Carol's", names containing < or >)
+    # don't break the rendered email body. Newlines are converted to
+    # <br/> *after* escaping so the line breaks survive.
     paragraphs = "".join(
         f"<p style='margin:0 0 14px 0;'>"
-        f"{p.strip().replace(chr(10), '<br/>')}"
+        f"{html_escape(p.strip()).replace(chr(10), '<br/>')}"
         f"</p>"
         for p in text.strip().split("\n\n")
         if p.strip()
@@ -362,6 +367,11 @@ def render_email(
             "physical postal address in every commercial email."
         )
 
+    # ``scripts/import_contacts.process_apollo`` already runs
+    # ``clean_company_name`` at import time, so for production sends
+    # this call is a no-op (it's idempotent). It's kept as a defensive
+    # net for the ``cli.py send-test`` path, ad-hoc callers, and any
+    # legacy rows imported before the cleanup landed.
     cleaned_name = clean_company_name(restaurant_name)
     if not cleaned_name:
         cleaned_name = RESTAURANT_FALLBACK
