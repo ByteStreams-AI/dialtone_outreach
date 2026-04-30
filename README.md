@@ -24,18 +24,26 @@ Imports owner contacts from Apollo and runs a 5-email sequence with automatic ti
 dialtone-outreach/
 ├── cli.py                      # Entry point — all commands live here
 ├── schema.sql                  # Run once in Supabase SQL editor
-├── requirements.txt
+├── pyproject.toml              # Project metadata (uv-managed)
+├── requirements.txt            # Pip-compatible dependency pin
 ├── .env.example                # Copy to .env and fill in credentials
+├── docs/
+│   ├── project-status.md       # Milestone tracker (source of truth)
+│   └── apollo-contacts-export.csv
 ├── outreach/
 │   ├── config.py               # All settings loaded from .env
 │   ├── db.py                   # Supabase client and query functions
 │   ├── email_client.py         # AWS SES wrapper
 │   ├── sequence.py             # Timing logic — who gets what email today
-│   ├── templates.py            # All 5 email templates (Jinja2)
+│   ├── templates.py            # All 5 email templates (Jinja2) + CAN-SPAM helpers
 │   └── runner.py               # Orchestration loop + terminal dashboard
 ├── scripts/
-│   └── import_contacts.py      # Apollo CSV importer
-└── web/                        # Local FastAPI UI for non-technical reviewers
+│   ├── import_contacts.py      # Apollo CSV importer
+│   └── preview_templates.py    # Render all 5 templates against real Apollo rows
+├── developer/
+│   ├── developer-journal.md    # Running engineering log
+│   └── template-previews/      # Generated previews (gitignored — regenerate with preview_templates.py)
+└── web/                        # Local FastAPI UI for non-technical reviewers (planned, milestone 4)
     ├── app.py                  # FastAPI application + routes
     ├── templates/              # Jinja2 page templates (HTMX-driven)
     └── static/                 # CSS + minimal JS
@@ -48,10 +56,23 @@ dialtone-outreach/
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/Bytes0211/dialtone-outreach.git
-cd dialtone-outreach
-python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+git clone https://github.com/ByteStreams-AI/dialtone_outreach.git
+cd dialtone_outreach
+```
+
+With [uv](https://docs.astral.sh/uv/) (preferred — matches the checked-in `uv.lock`):
+
+```bash
+uv venv
+source .venv/bin/activate       # Windows: .venv\Scripts\activate
+uv pip install -r requirements.txt
+```
+
+Or with stock `venv` + `pip`:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate       # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
@@ -71,7 +92,13 @@ AWS_SECRET_ACCESS_KEY=your-secret-key
 AWS_REGION=us-east-1
 FROM_EMAIL=steve@dialtone.menu
 CALENDLY_URL=https://calendly.com/your-link
+BUSINESS_ADDRESS="100 Powell Place #1473\nNashville, TN 37204\nUnited States"
+COMPANY_LEGAL_NAME=ByteStreams LLC
+UNSUBSCRIBE_EMAIL=unsubscribe@dialtone.menu
 ```
+
+> **CAN-SPAM:** `BUSINESS_ADDRESS` must be a real physical postal address.
+> `outreach/templates.py` will refuse to render an email if it is unset.
 
 ### 3. Create the database
 
@@ -238,7 +265,7 @@ To run automatically every morning at 8am CT, add a cron job:
 
 ```bash
 # crontab -e
-0 8 * * 1-5 cd /path/to/dialtone-outreach && source venv/bin/activate && python cli.py run >> logs/outreach.log 2>&1
+0 8 * * 1-5 cd /path/to/dialtone_outreach && source .venv/bin/activate && python cli.py run >> logs/outreach.log 2>&1
 ```
 
 Or deploy as an AWS Lambda function triggered by EventBridge (same scheduler already in your DialTone stack).
@@ -252,12 +279,58 @@ All email templates are in `outreach/templates.py`. Each template is a Jinja2 st
 | Token | Value |
 |-------|-------|
 | `{{ first_name }}` | Owner first name (falls back to "there") |
-| `{{ restaurant_name }}` | Restaurant name |
-| `{{ city }}` | City |
+| `{{ restaurant_name }}` | Restaurant name (cleaned of `LLC`, `Inc.`, surrounding quotes; falls back to "your restaurant") |
+| `{{ city }}` | Restaurant city; opener uses a `{% if city %}` hook so missing values don't break the sentence |
 | `{{ calendly_url }}` | Your booking link |
 | `{{ from_name }}` | Your name |
 
 Edit the template strings directly — no restart needed, changes apply on next run.
+
+### Previewing rendered templates
+
+Before unfreezing send (milestone 1, step 6), render all 5 templates against
+5 real Apollo rows and review the output:
+
+```bash
+python scripts/preview_templates.py
+```
+
+Outputs land in `developer/template-previews/<contact>-seq<n>.{txt,html}`.
+Open the HTML files in Gmail / Apple Mail for visual review. The script
+exits non-zero if any rendered file still contains a `{{ … }}` artifact,
+so it doubles as a smoke test against the milestone 1 brace-leak bug.
+
+### Verified-inbox test send
+
+```bash
+python cli.py send-test --to verified@inbox.example
+```
+
+Renders email #1 against a sample contact and sends through SES after a
+confirmation prompt. Use to satisfy the milestone 1 acceptance criterion
+"test send to a verified inbox renders correctly in Gmail and Apple Mail."
+
+## CAN-SPAM Compliance
+
+Every email rendered by `outreach/templates.py` includes:
+
+- The legal entity name (`COMPANY_LEGAL_NAME`)
+- The physical postal address (`BUSINESS_ADDRESS`) — **required by law**
+- A working unsubscribe link
+- Sender identity in the signature and footer
+
+Until milestone 3 ships automated reply detection, unsubscribes are
+handled manually:
+
+1. Recipients click the `mailto:` link in the footer (or send `unsubscribe`
+   as a reply).
+2. The mailbox owner (`UNSUBSCRIBE_EMAIL`, default
+   `unsubscribe@dialtone.menu`) marks the contact as `not_interested` in
+   Supabase, which removes them from the active sequence within minutes.
+
+Set `UNSUBSCRIBE_URL` if you later wire up a Cloudflare Worker /
+endpoint that handles unsubscribes automatically — the templates will
+use that URL in place of the mailto link.
 
 ---
 
@@ -284,6 +357,10 @@ Currently, marking a contact as `replied` requires a manual status update in Sup
 | `FROM_NAME` | — | `Steve Cotton` | Display name for sender |
 | `DAILY_SEND_LIMIT` | — | `20` | Max emails per run |
 | `CALENDLY_URL` | — | placeholder | Booking link appended to email CTAs |
+| `BUSINESS_ADDRESS` | ✓ | — | Physical postal address shown in every email footer (CAN-SPAM) |
+| `COMPANY_LEGAL_NAME` | — | `ByteStreams LLC` | Legal entity name shown in the footer |
+| `UNSUBSCRIBE_EMAIL` | — | `unsubscribe@dialtone.menu` | Mailbox used in the `mailto:` unsubscribe link |
+| `UNSUBSCRIBE_URL` | — | (mailto fallback) | Optional URL-based unsubscribe endpoint |
 
 ---
 

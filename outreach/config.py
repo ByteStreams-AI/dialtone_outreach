@@ -36,6 +36,22 @@ SEQUENCE_TIMEZONE = os.getenv("SEQUENCE_TIMEZONE", "America/Chicago")
 # ── Calendly ─────────────────────────────────────────────────────
 CALENDLY_URL = os.getenv("CALENDLY_URL", "https://calendly.com/your-link")
 
+# ── CAN-SPAM compliance ──────────────────────────────────────────
+# BUSINESS_ADDRESS is the physical postal address required in every
+# commercial email (CAN-SPAM Act, 15 U.S.C. § 7704). It must be a real
+# mailing address. ``render_email()`` raises if this is unset so we cannot
+# accidentally send a non-compliant email.
+BUSINESS_ADDRESS    = os.getenv("BUSINESS_ADDRESS", "").strip()
+# Legal entity name shown in the footer alongside the address.
+COMPANY_LEGAL_NAME  = os.getenv("COMPANY_LEGAL_NAME", "ByteStreams LLC")
+# Mailbox that receives unsubscribe requests. Used to compose a mailto:
+# link when UNSUBSCRIBE_URL is not set.
+UNSUBSCRIBE_EMAIL   = os.getenv("UNSUBSCRIBE_EMAIL", "unsubscribe@dialtone.menu")
+# Optional fully-qualified unsubscribe URL (e.g. a Cloudflare Worker).
+# When empty, templates fall back to a mailto: link built from
+# UNSUBSCRIBE_EMAIL.
+UNSUBSCRIBE_URL     = os.getenv("UNSUBSCRIBE_URL", "").strip()
+
 # ── Contact statuses ─────────────────────────────────────────────
 class Status:
     NEW           = "new"

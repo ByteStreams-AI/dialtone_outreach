@@ -11,6 +11,7 @@ Usage:
     python cli.py status
     python cli.py stats
     python cli.py contact --email owner@restaurant.com
+    python cli.py send-test --to verified@inbox.com
 """
 import click
 from rich.console import Console
@@ -165,6 +166,58 @@ def contact(email, domain):
     else:
         console.print("  No emails sent yet.")
     console.print()
+
+
+# ── send-test ───────────────────────────────────────────────────────
+@cli.command("send-test")
+@click.option("--to", "to_email", required=True,
+              help="Verified SES recipient inbox")
+@click.option("--seq", default=1, type=click.IntRange(1, 5),
+              help="Which template (1-5) to render and send")
+@click.option("--first-name",      default="Sample",  show_default=True)
+@click.option("--restaurant-name", default="Sample Bistro", show_default=True)
+@click.option("--city",            default="Nashville", show_default=True)
+@click.option("--yes", is_flag=True, default=False,
+              help="Skip the confirmation prompt")
+def send_test(to_email, seq, first_name, restaurant_name, city, yes):
+    """Render a single template and send it to a verified inbox.
+
+    Used for the milestone 1 acceptance step "test send to a verified
+    inbox renders correctly in Gmail and Apple Mail". Renders a sample
+    contact through the real ``render_email`` + SES path so what lands
+    in the inbox matches what production sends.
+    """
+    from outreach.templates import render_email
+    from outreach.email_client import send_email
+    from outreach.config import FROM_EMAIL
+
+    email = render_email(
+        sequence_number = seq,
+        first_name      = first_name,
+        restaurant_name = restaurant_name,
+        city            = city,
+        to_email        = to_email,
+    )
+
+    console.print(f"\n[bold blue]send-test[/bold blue]  seq=[bold]{seq}[/bold]  to=[cyan]{to_email}[/cyan]")
+    console.print(f"  Subject: [white]{email['subject']}[/white]\n")
+    console.print(email["text"])
+
+    if not yes:
+        click.confirm(
+            "\nSend this email through SES?",
+            abort=True,
+            default=False,
+        )
+
+    resp = send_email(
+        to_email   = to_email,
+        subject    = email["subject"],
+        body_text  = email["text"],
+        body_html  = email["html"],
+        reply_to   = FROM_EMAIL,
+    )
+    console.print(f"  [green]✓[/green] sent  message_id=[dim]{resp.get('message_id')}[/dim]\n")
 
 
 if __name__ == "__main__":
