@@ -60,6 +60,7 @@ def run(dry_run: bool = False, limit: int = None) -> dict:
             first_name       = contact.get("owner_first", ""),
             restaurant_name  = contact.get("restaurant_name", ""),
             city             = contact.get("city", ""),
+            to_email         = contact.get("owner_email"),
         )
 
         row = {

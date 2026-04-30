@@ -1,45 +1,200 @@
-"""
-templates.py — All outreach email templates with personalisation tokens.
+"""templates.py — All outreach email templates with personalisation tokens.
 
-Each template function returns a dict:
-  { "subject": str, "text": str, "html": str }
+Each template function returns a dict::
 
-Available tokens (passed as kwargs):
-  first_name        — owner first name (or "there" as fallback)
-  restaurant_name   — restaurant name
-  city              — city
-  calendly_url      — booking link
-  from_name         — sender name
+    {"subject": str, "text": str, "html": str}
+
+Available tokens (passed as kwargs to ``render_email``):
+
+* ``first_name``       — owner first name (or ``"there"`` as fallback)
+* ``restaurant_name``  — restaurant name (cleaned of LLC/Inc./quotes)
+* ``city``             — city the restaurant is located in
+* ``calendly_url``     — booking link
+* ``from_name``        — sender display name
+
+The module also enforces CAN-SPAM compliance: every rendered email
+includes the configured ``BUSINESS_ADDRESS``, a sender identity line,
+and a working unsubscribe link in both the HTML and plain-text bodies.
 """
 from __future__ import annotations
+
+import re
+from urllib.parse import quote
+
 from jinja2 import Template
-from outreach.config import CALENDLY_URL, FROM_NAME
+
+from outreach.config import (
+    BUSINESS_ADDRESS,
+    CALENDLY_URL,
+    COMPANY_LEGAL_NAME,
+    FROM_NAME,
+    UNSUBSCRIBE_EMAIL,
+    UNSUBSCRIBE_URL,
+)
+
+
+# ── Helpers ───────────────────────────────────────────────────────
 
 
 def _render(tmpl: str, **kwargs) -> str:
+    """Render a Jinja2 template string with the given context."""
     return Template(tmpl).render(**kwargs)
 
 
-def _html_wrap(text: str) -> str:
-    """Wrap plain text in a minimal, clean HTML email."""
+# Trailing legal suffixes / corporate forms that should be stripped from
+# Apollo's "Company Name" before it's used as a friendly restaurant name.
+_COMPANY_SUFFIX_RE = re.compile(
+    r"""
+    [\s,]*                  # optional leading separator
+    \b(
+        l\.?\s*l\.?\s*c\.?  # LLC, L.L.C., L L C
+        | inc\.?            # Inc, Inc.
+        | incorporated
+        | corp\.?
+        | corporation
+        | co\.?             # Co, Co.
+        | ltd\.?
+        | limited
+        | l\.?p\.?          # LP, L.P.
+        | p\.?l\.?l\.?c\.?  # PLLC
+        | p\.?c\.?          # PC
+    )\b
+    [\s.,]*$                # eat trailing whitespace/punctuation
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+# Quote characters that occasionally surround Apollo company names.
+_QUOTE_CHARS = "\"'\u201c\u201d\u2018\u2019`"
+
+
+def clean_company_name(name: str) -> str:
+    """Normalize an Apollo "Company Name" into a friendly outreach name.
+
+    Strips trailing corporate suffixes (``LLC``, ``Inc.``, ``Corp.``,
+    ``Ltd.``, ``Co.``, ``PLLC``, ``PC``, ``L.P.``), surrounding quote
+    characters, and collapses internal whitespace.
+
+    Args:
+        name: Raw company name as it appears in the imported CSV.
+
+    Returns:
+        Cleaned company name. Returns an empty string if ``name`` is
+        falsy or becomes empty after stripping.
+    """
+    if not name:
+        return ""
+
+    cleaned = str(name).strip().strip(_QUOTE_CHARS).strip()
+    # Strip suffixes repeatedly so "Foo Bar Inc, LLC" collapses cleanly.
+    while True:
+        new = _COMPANY_SUFFIX_RE.sub("", cleaned).strip().strip(_QUOTE_CHARS).strip()
+        if new == cleaned:
+            break
+        cleaned = new
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(",.; ").strip()
+    return cleaned
+
+
+def _resolve_unsubscribe_url(to_email: str | None = None) -> str:
+    """Return a valid unsubscribe link.
+
+    Prefers ``UNSUBSCRIBE_URL`` when configured; otherwise composes a
+    ``mailto:`` link from ``UNSUBSCRIBE_EMAIL`` with a pre-filled subject
+    that lets recipients unsubscribe with a single click.
+
+    Args:
+        to_email: Optional recipient address; included in the subject so
+            the unsubscribe handler can identify the sender quickly.
+
+    Returns:
+        An absolute URL safe to drop into an HTML ``href``.
+    """
+    if UNSUBSCRIBE_URL:
+        return UNSUBSCRIBE_URL
+    subject = "Unsubscribe"
+    if to_email:
+        subject = f"Unsubscribe {to_email}"
+    return f"mailto:{UNSUBSCRIBE_EMAIL}?subject={quote(subject)}"
+
+
+def _format_address_html(address: str) -> str:
+    """Render a possibly multi-line postal address as HTML."""
+    parts = [p.strip() for p in re.split(r"\r?\n", address) if p.strip()]
+    return "<br/>".join(parts)
+
+
+def _format_address_text(address: str) -> str:
+    """Render a possibly multi-line postal address as plain text."""
+    parts = [p.strip() for p in re.split(r"\r?\n", address) if p.strip()]
+    return "\n".join(parts)
+
+
+def _text_footer(*, unsubscribe_url: str, business_address: str,
+                 company_legal_name: str, sender_name: str) -> str:
+    """Build the CAN-SPAM compliant plain-text footer.
+
+    Args:
+        unsubscribe_url: Resolved unsubscribe link.
+        business_address: Real postal address for the sending entity.
+        company_legal_name: Legal entity name shown next to the address.
+        sender_name: Display name of the human sender.
+
+    Returns:
+        A footer string starting with a leading separator.
+    """
+    return (
+        "\n\n--\n"
+        f"{sender_name} on behalf of {company_legal_name}\n"
+        f"{_format_address_text(business_address)}\n\n"
+        f"To stop receiving these emails, reply with \"unsubscribe\" or "
+        f"visit:\n{unsubscribe_url}\n"
+    )
+
+
+def _html_wrap(text: str, *, unsubscribe_url: str, business_address: str,
+               company_legal_name: str, sender_name: str) -> str:
+    """Wrap a plain-text email body in CAN-SPAM compliant HTML.
+
+    Args:
+        text: Already-Jinja-rendered plain text body (without the text
+            footer; the HTML footer is appended here instead).
+        unsubscribe_url: Resolved unsubscribe link.
+        business_address: Real postal address for the sending entity.
+        company_legal_name: Legal entity name shown next to the address.
+        sender_name: Display name of the human sender.
+
+    Returns:
+        A complete HTML document suitable for the SES ``Body.Html`` field.
+    """
     paragraphs = "".join(
-        f"<p style='margin:0 0 14px 0;'>{p.strip()}</p>"
+        f"<p style='margin:0 0 14px 0;'>"
+        f"{p.strip().replace(chr(10), '<br/>')}"
+        f"</p>"
         for p in text.strip().split("\n\n")
         if p.strip()
     )
-    return f"""<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"/></head>
-<body style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6;
-             color:#1E293B;max-width:580px;margin:40px auto;padding:0 20px;">
-  {paragraphs}
-  <hr style="border:none;border-top:1px solid #E2E8F0;margin:32px 0;"/>
-  <p style="font-size:12px;color:#94A3B8;margin:0;">
-    DialTone &middot; dialtone.menu &middot; Nashville, TN<br/>
-    <a href="{{{{ unsubscribe_url }}}}" style="color:#94A3B8;">Unsubscribe</a>
-  </p>
-</body>
-</html>"""
+    address_html = _format_address_html(business_address)
+    return (
+        "<!DOCTYPE html>\n"
+        "<html>\n"
+        "<head><meta charset=\"UTF-8\"/></head>\n"
+        "<body style=\"font-family:Arial,sans-serif;font-size:15px;line-height:1.6;"
+        "color:#1E293B;max-width:580px;margin:40px auto;padding:0 20px;\">\n"
+        f"  {paragraphs}\n"
+        "  <hr style=\"border:none;border-top:1px solid #E2E8F0;margin:32px 0;\"/>\n"
+        "  <p style=\"font-size:12px;color:#94A3B8;margin:0 0 8px 0;\">\n"
+        f"    {sender_name} on behalf of {company_legal_name}<br/>\n"
+        f"    {address_html}\n"
+        "  </p>\n"
+        "  <p style=\"font-size:12px;color:#94A3B8;margin:0;\">\n"
+        f"    Don't want these emails? "
+        f"<a href=\"{unsubscribe_url}\" style=\"color:#94A3B8;text-decoration:underline;\">"
+        "Unsubscribe</a>.\n"
+        "  </p>\n"
+        "</body>\n"
+        "</html>"
+    )
 
 
 # ── Email #1 — The Opener ────────────────────────────────────────
@@ -49,7 +204,11 @@ EMAIL_1_SUBJECT = "Friday nights at {{ restaurant_name }}"
 EMAIL_1_TEXT = """\
 Hi {{ first_name }},
 
+{% if city -%}
+Quick question for {{ city }} restaurant owners — how many calls does {{ restaurant_name }} miss on a Friday between 6 and 9pm?
+{%- else -%}
 Quick question — how many calls does {{ restaurant_name }} miss on a Friday between 6 and 9pm?
+{%- endif %}
 
 I ask because I'm building DialTone — voice AI that answers your phone, takes orders, and reads back the total to the customer. No app, no tablet, no extra staff. Works with your existing phone number.
 
@@ -157,6 +316,10 @@ TEMPLATES = {
     5: (EMAIL_5_SUBJECT, EMAIL_5_TEXT),
 }
 
+# Fallbacks shown when the imported contact has no usable values.
+RESTAURANT_FALLBACK = "your restaurant"
+FIRST_NAME_FALLBACK = "there"
+
 
 def render_email(
     sequence_number: int,
@@ -165,26 +328,75 @@ def render_email(
     city: str = "",
     calendly_url: str = CALENDLY_URL,
     from_name: str = FROM_NAME,
+    to_email: str | None = None,
 ) -> dict:
-    """
-    Render an email template for a given sequence number.
-    Returns { subject, text, html }.
+    """Render an email template for a given sequence number.
+
+    Args:
+        sequence_number: Position in the 5-email sequence (1-5).
+        first_name: Owner first name; falls back to ``"there"`` if empty.
+        restaurant_name: Restaurant / company name. Cleaned via
+            :func:`clean_company_name` and falls back to
+            ``"your restaurant"`` when empty.
+        city: Optional city. When provided, the opener uses a city hook;
+            otherwise the hook is omitted gracefully.
+        calendly_url: Booking link inserted into CTAs.
+        from_name: Display name used in the signature and footer.
+        to_email: Optional recipient address; used to personalize the
+            ``mailto:`` unsubscribe subject line.
+
+    Returns:
+        A dict with ``subject``, ``text``, and ``html`` keys.
+
+    Raises:
+        ValueError: If ``sequence_number`` is unknown, or if
+            ``BUSINESS_ADDRESS`` is not configured (CAN-SPAM guard).
     """
     if sequence_number not in TEMPLATES:
         raise ValueError(f"No template for sequence number {sequence_number}")
 
+    if not BUSINESS_ADDRESS:
+        raise ValueError(
+            "BUSINESS_ADDRESS is not configured. Set it in .env before "
+            "rendering or sending email — CAN-SPAM requires a real "
+            "physical postal address in every commercial email."
+        )
+
+    cleaned_name = clean_company_name(restaurant_name)
+    if not cleaned_name:
+        cleaned_name = RESTAURANT_FALLBACK
+
+    safe_first = (first_name or "").strip() or FIRST_NAME_FALLBACK
+    safe_city = (city or "").strip()
+
     subject_tmpl, text_tmpl = TEMPLATES[sequence_number]
 
     ctx = {
-        "first_name":       first_name or "there",
-        "restaurant_name":  restaurant_name,
-        "city":             city,
-        "calendly_url":     calendly_url,
-        "from_name":        from_name,
+        "first_name":      safe_first,
+        "restaurant_name": cleaned_name,
+        "city":            safe_city,
+        "calendly_url":    calendly_url,
+        "from_name":       from_name,
     }
 
-    subject = _render(subject_tmpl, **ctx)
-    text    = _render(text_tmpl, **ctx)
-    html    = _html_wrap(text.replace("\n\n", "</p><p>").replace("\n", "<br/>"))
+    subject = _render(subject_tmpl, **ctx).strip()
+    body    = _render(text_tmpl, **ctx)
+
+    unsubscribe_url = _resolve_unsubscribe_url(to_email)
+
+    text = body + _text_footer(
+        unsubscribe_url    = unsubscribe_url,
+        business_address   = BUSINESS_ADDRESS,
+        company_legal_name = COMPANY_LEGAL_NAME,
+        sender_name        = from_name,
+    )
+
+    html = _html_wrap(
+        body,
+        unsubscribe_url    = unsubscribe_url,
+        business_address   = BUSINESS_ADDRESS,
+        company_legal_name = COMPANY_LEGAL_NAME,
+        sender_name        = from_name,
+    )
 
     return {"subject": subject, "text": text, "html": html}

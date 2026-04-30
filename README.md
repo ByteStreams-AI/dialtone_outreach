@@ -71,7 +71,13 @@ AWS_SECRET_ACCESS_KEY=your-secret-key
 AWS_REGION=us-east-1
 FROM_EMAIL=steve@dialtone.menu
 CALENDLY_URL=https://calendly.com/your-link
+BUSINESS_ADDRESS=ByteStreams LLC, 123 Main St Suite 100, Nashville, TN 37203
+COMPANY_LEGAL_NAME=ByteStreams LLC
+UNSUBSCRIBE_EMAIL=unsubscribe@dialtone.menu
 ```
+
+> **CAN-SPAM:** `BUSINESS_ADDRESS` must be a real physical postal address.
+> `outreach/templates.py` will refuse to render an email if it is unset.
 
 ### 3. Create the database
 
@@ -252,12 +258,58 @@ All email templates are in `outreach/templates.py`. Each template is a Jinja2 st
 | Token | Value |
 |-------|-------|
 | `{{ first_name }}` | Owner first name (falls back to "there") |
-| `{{ restaurant_name }}` | Restaurant name |
-| `{{ city }}` | City |
+| `{{ restaurant_name }}` | Restaurant name (cleaned of `LLC`, `Inc.`, surrounding quotes; falls back to "your restaurant") |
+| `{{ city }}` | Restaurant city; opener uses a `{% if city %}` hook so missing values don't break the sentence |
 | `{{ calendly_url }}` | Your booking link |
 | `{{ from_name }}` | Your name |
 
 Edit the template strings directly — no restart needed, changes apply on next run.
+
+### Previewing rendered templates
+
+Before unfreezing send (milestone 1, step 6), render all 5 templates against
+5 real Apollo rows and review the output:
+
+```bash
+python scripts/preview_templates.py
+```
+
+Outputs land in `developer/template-previews/<contact>-seq<n>.{txt,html}`.
+Open the HTML files in Gmail / Apple Mail for visual review. The script
+exits non-zero if any rendered file still contains a `{{ … }}` artifact,
+so it doubles as a smoke test against the milestone 1 brace-leak bug.
+
+### Verified-inbox test send
+
+```bash
+python cli.py send-test --to verified@inbox.example
+```
+
+Renders email #1 against a sample contact and sends through SES after a
+confirmation prompt. Use to satisfy the milestone 1 acceptance criterion
+"test send to a verified inbox renders correctly in Gmail and Apple Mail."
+
+## CAN-SPAM Compliance
+
+Every email rendered by `outreach/templates.py` includes:
+
+- The legal entity name (`COMPANY_LEGAL_NAME`)
+- The physical postal address (`BUSINESS_ADDRESS`) — **required by law**
+- A working unsubscribe link
+- Sender identity in the signature and footer
+
+Until milestone 3 ships automated reply detection, unsubscribes are
+handled manually:
+
+1. Recipients click the `mailto:` link in the footer (or send `unsubscribe`
+   as a reply).
+2. The mailbox owner (`UNSUBSCRIBE_EMAIL`, default
+   `unsubscribe@dialtone.menu`) marks the contact as `not_interested` in
+   Supabase, which removes them from the active sequence within minutes.
+
+Set `UNSUBSCRIBE_URL` if you later wire up a Cloudflare Worker /
+endpoint that handles unsubscribes automatically — the templates will
+use that URL in place of the mailto link.
 
 ---
 
@@ -284,6 +336,10 @@ Currently, marking a contact as `replied` requires a manual status update in Sup
 | `FROM_NAME` | — | `Steve Cotton` | Display name for sender |
 | `DAILY_SEND_LIMIT` | — | `20` | Max emails per run |
 | `CALENDLY_URL` | — | placeholder | Booking link appended to email CTAs |
+| `BUSINESS_ADDRESS` | ✓ | — | Physical postal address shown in every email footer (CAN-SPAM) |
+| `COMPANY_LEGAL_NAME` | — | `ByteStreams LLC` | Legal entity name shown in the footer |
+| `UNSUBSCRIBE_EMAIL` | — | `unsubscribe@dialtone.menu` | Mailbox used in the `mailto:` unsubscribe link |
+| `UNSUBSCRIBE_URL` | — | (mailto fallback) | Optional URL-based unsubscribe endpoint |
 
 ---
 

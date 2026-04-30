@@ -16,6 +16,7 @@ import pandas as pd
 from rich.console import Console
 from rich.progress import track
 from outreach.db import get_client, upsert_contact
+from outreach.templates import clean_company_name
 
 console = Console()
 
@@ -35,16 +36,22 @@ OUTSCRAPER_MAP = {
     "postal_code":   "zip",
 }
 
+# Apollo CSV columns are lower-cased before mapping. We deliberately
+# prefer the *company* address fields over the contact's personal
+# city/state — outreach copy is about the restaurant location, not where
+# the owner happens to live.
 APOLLO_MAP = {
     "first name":        "owner_first",
     "last name":         "owner_last",
     "title":             "title",
     "email":             "owner_email",
-    "direct phone":      "owner_phone",
-    "company":           "restaurant_name",
+    "work direct phone": "owner_phone",
+    "company name":      "restaurant_name",
     "website":           "website",
-    "city":              "city",
-    "state":             "state",
+    "company city":      "city",
+    "company state":     "state",
+    "company phone":     "business_phone",
+    "company address":   "address",
 }
 
 KNOWN_CHAINS = [
@@ -99,6 +106,13 @@ def passes_quality_filter(row: pd.Series, source: str) -> tuple[bool, str]:
         email = row.get("owner_email", "")
         if not email or pd.isna(email):
             return False, "no email"
+        # Apollo provides an "email status" column populated by
+        # ZeroBounce / their own verifier. Only allow rows that came
+        # back "valid" — anything else (catch-all, risky, etc.) is a
+        # deliverability liability for the first live cohort.
+        email_status = (row.get("email status") or "").strip().lower()
+        if email_status and email_status != "valid":
+            return False, f"email status={email_status}"
 
     return True, ""
 
@@ -113,6 +127,19 @@ def process_outscraper(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def process_apollo(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize an Apollo CSV export into the contacts schema.
+
+    Lower-cases the headers, renames Apollo's columns to our internal
+    field names, derives ``domain`` from the website (or email), cleans
+    the company name, and tags each row with ``source = 'apollo'`` /
+    ``status = 'new'``.
+
+    Args:
+        df: Raw Apollo export loaded with ``pd.read_csv``.
+
+    Returns:
+        A normalized DataFrame ready for the upsert loop.
+    """
     df.columns = [c.lower().strip() for c in df.columns]
     df = df.rename(columns={k: v for k, v in APOLLO_MAP.items() if k in df.columns})
     df["domain"] = df.get("website", pd.Series(dtype=str)).apply(extract_domain)
@@ -122,6 +149,13 @@ def process_apollo(df: pd.DataFrame) -> pd.DataFrame:
     if "owner_email" in df.columns:
         df.loc[mask, "domain"] = df.loc[mask, "owner_email"].apply(
             lambda e: e.split("@")[1] if "@" in str(e) else ""
+        )
+
+    # Strip LLC / Inc. / quotes from the restaurant name once at import
+    # time so the database stores the cleaned value forever.
+    if "restaurant_name" in df.columns:
+        df["restaurant_name"] = df["restaurant_name"].apply(
+            lambda v: clean_company_name(v) if pd.notna(v) else v
         )
 
     df["source"] = "apollo"
