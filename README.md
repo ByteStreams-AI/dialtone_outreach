@@ -24,18 +24,26 @@ Imports owner contacts from Apollo and runs a 5-email sequence with automatic ti
 dialtone-outreach/
 ├── cli.py                      # Entry point — all commands live here
 ├── schema.sql                  # Run once in Supabase SQL editor
-├── requirements.txt
+├── pyproject.toml              # Project metadata (uv-managed)
+├── requirements.txt            # Pip-compatible dependency pin
 ├── .env.example                # Copy to .env and fill in credentials
+├── docs/
+│   ├── project-status.md       # Milestone tracker (source of truth)
+│   └── apollo-contacts-export.csv
 ├── outreach/
 │   ├── config.py               # All settings loaded from .env
 │   ├── db.py                   # Supabase client and query functions
 │   ├── email_client.py         # AWS SES wrapper
 │   ├── sequence.py             # Timing logic — who gets what email today
-│   ├── templates.py            # All 5 email templates (Jinja2)
+│   ├── templates.py            # All 5 email templates (Jinja2) + CAN-SPAM helpers
 │   └── runner.py               # Orchestration loop + terminal dashboard
 ├── scripts/
-│   └── import_contacts.py      # Apollo CSV importer
-└── web/                        # Local FastAPI UI for non-technical reviewers
+│   ├── import_contacts.py      # Apollo CSV importer
+│   └── preview_templates.py    # Render all 5 templates against real Apollo rows
+├── developer/
+│   ├── developer-journal.md    # Running engineering log
+│   └── template-previews/      # Generated previews (gitignored — regenerate with preview_templates.py)
+└── web/                        # Local FastAPI UI for non-technical reviewers (planned, milestone 4)
     ├── app.py                  # FastAPI application + routes
     ├── templates/              # Jinja2 page templates (HTMX-driven)
     └── static/                 # CSS + minimal JS
@@ -48,10 +56,23 @@ dialtone-outreach/
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/Bytes0211/dialtone-outreach.git
-cd dialtone-outreach
-python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+git clone https://github.com/ByteStreams-AI/dialtone_outreach.git
+cd dialtone_outreach
+```
+
+With [uv](https://docs.astral.sh/uv/) (preferred — matches the checked-in `uv.lock`):
+
+```bash
+uv venv
+source .venv/bin/activate       # Windows: .venv\Scripts\activate
+uv pip install -r requirements.txt
+```
+
+Or with stock `venv` + `pip`:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate       # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
@@ -71,7 +92,7 @@ AWS_SECRET_ACCESS_KEY=your-secret-key
 AWS_REGION=us-east-1
 FROM_EMAIL=steve@dialtone.menu
 CALENDLY_URL=https://calendly.com/your-link
-BUSINESS_ADDRESS=ByteStreams LLC, 123 Main St Suite 100, Nashville, TN 37203
+BUSINESS_ADDRESS="100 Powell Place #1473\nNashville, TN 37204\nUnited States"
 COMPANY_LEGAL_NAME=ByteStreams LLC
 UNSUBSCRIBE_EMAIL=unsubscribe@dialtone.menu
 ```
@@ -244,7 +265,7 @@ To run automatically every morning at 8am CT, add a cron job:
 
 ```bash
 # crontab -e
-0 8 * * 1-5 cd /path/to/dialtone-outreach && source venv/bin/activate && python cli.py run >> logs/outreach.log 2>&1
+0 8 * * 1-5 cd /path/to/dialtone_outreach && source .venv/bin/activate && python cli.py run >> logs/outreach.log 2>&1
 ```
 
 Or deploy as an AWS Lambda function triggered by EventBridge (same scheduler already in your DialTone stack).
