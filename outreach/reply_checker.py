@@ -34,6 +34,8 @@ from outreach.config import (
     REPLY_CHECK_IMAP_HOST,
     REPLY_CHECK_IMAP_PORT,
     REPLY_CHECK_PASSWORD,
+    TERMINAL_STATUSES,
+    Status,
 )
 
 logger = logging.getLogger(__name__)
@@ -175,6 +177,19 @@ def _process_reply(
     """
     contact = db.find_contact_by_owner_email(client, sender_email)
     if contact is None:
+        return None
+
+    # Guard: do not overwrite an existing terminal status. A contact
+    # marked ``not_interested`` (CAN-SPAM unsubscribe) or ``invalid``
+    # must keep that status even if they later email the reply mailbox.
+    # ``replied`` is excluded so the check stays idempotent.
+    current_status = contact.get("status", "")
+    if current_status in TERMINAL_STATUSES and current_status != Status.REPLIED:
+        logger.info(
+            "Skipped reply from %s — contact is already %s",
+            sender_email,
+            current_status,
+        )
         return None
 
     contact_id = contact["id"]
