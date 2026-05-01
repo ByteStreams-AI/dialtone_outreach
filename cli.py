@@ -17,6 +17,8 @@ Usage:
     python cli.py metrics --since 7d
     python cli.py metrics --cohort batch-1
     python cli.py contact --email owner@restaurant.com
+    python cli.py check-replies [--dry-run]
+    python cli.py check-replies --audit [--fix]
     python cli.py unsubscribe --email owner@restaurant.com
     python cli.py send-test --to verified@inbox.com
 """
@@ -371,6 +373,61 @@ def unsubscribe(email, note, yes):
     console.print(
         f"  [green]✓[/green] {email} marked not_interested.  "
         f"Notes:\n[dim]{updated.get('notes','—')}[/dim]\n"
+    )
+
+
+# ── check-replies ─────────────────────────────────────────────
+@cli.command("check-replies")
+@click.option("--dry-run", is_flag=True, default=False,
+              help="Show what would be marked as replied without writing")
+@click.option("--audit",   is_flag=True, default=False,
+              help="Scan for reply-status mismatches instead of checking IMAP")
+@click.option("--fix",     is_flag=True, default=False,
+              help="With --audit, auto-fix detected mismatches")
+def check_replies(dry_run, audit, fix):
+    """Scan the reply mailbox for replies from known contacts.
+
+    Connects to the IMAP mailbox configured by REPLY_CHECK_* env vars,
+    finds unread messages from known contacts, and marks them as
+    ``replied`` in Supabase so the sequence engine stops emailing them.
+
+    Use --audit to check for contacts where email_log.replied_at is set
+    but contacts.status hasn't been updated (e.g. after a partial failure).
+    """
+    if audit:
+        from outreach.db import get_client
+        from outreach.audit import run_audit, print_audit_report
+        client = get_client()
+        result = run_audit(client, fix=fix)
+        print_audit_report(result, fix=fix)
+        return
+
+    if fix:
+        console.print("[red]--fix requires --audit[/red]")
+        sys.exit(2)
+
+    from outreach.reply_checker import check_replies as _check
+
+    console.print(
+        f"\n[bold blue]DialTone Reply Checker[/bold blue]  "
+        f"{'[yellow]DRY RUN[/yellow]' if dry_run else '[green]LIVE[/green]'}\n"
+    )
+
+    try:
+        result = _check(dry_run=dry_run)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(1)
+    except Exception as exc:
+        console.print(f"[red]IMAP error: {exc}[/red]")
+        sys.exit(1)
+
+    console.print(
+        f"\n[bold]SUMMARY[/bold]\n"
+        f"  Scanned: [bold]{result.scanned}[/bold]\n"
+        f"  Matched: [green]{result.matched}[/green]\n"
+        f"  Skipped: [dim]{result.skipped}[/dim]\n"
+        f"  Errors:  [red]{result.errors}[/red]\n"
     )
 
 

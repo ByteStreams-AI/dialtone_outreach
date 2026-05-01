@@ -74,6 +74,8 @@ python cli.py cohort lock   --name batch-1 --limit 5
 python cli.py cohort show   [--name batch-1]
 python cli.py cohort unlock --name batch-1
 python cli.py run --dry-run --cohort batch-1
+python cli.py check-replies [--dry-run]
+python cli.py check-replies --audit [--fix]
 python cli.py metrics --since 7d
 python cli.py metrics --cohort batch-1
 python scripts/preview_templates.py [--csv PATH] [--out DIR] [--count N]

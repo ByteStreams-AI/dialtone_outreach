@@ -136,6 +136,63 @@ def get_contacts_by_status(client: Client, status: str) -> list[dict]:
     return result.data or []
 
 
+def find_contact_by_owner_email(client: Client, email: str) -> Optional[dict]:
+    """Look up a single contact by ``owner_email``.
+
+    Args:
+        client: Supabase client.
+        email: The owner email address to match (case-insensitive).
+
+    Returns:
+        The contact row dict, or ``None`` if no match is found.
+    """
+    result = (
+        client.table("contacts")
+        .select("*")
+        .ilike("owner_email", email)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+def find_reply_status_mismatches(client: Client) -> list[dict]:
+    """Find contacts with a replied email but a non-terminal status.
+
+    These are contacts where ``email_log.replied_at`` is set on at least
+    one row but ``contacts.status`` has not been flipped to ``replied``
+    (or another terminal status). This can happen if a webhook or
+    ``check-replies`` run failed partway through.
+
+    Returns:
+        List of contact rows that need their status corrected.
+    """
+    # Pull all email_log rows that have replied_at set.
+    replied_logs = (
+        client.table("email_log")
+        .select("contact_id")
+        .not_.is_("replied_at", "null")
+        .execute()
+    ).data or []
+    if not replied_logs:
+        return []
+
+    replied_contact_ids = list({row["contact_id"] for row in replied_logs})
+
+    # Pull those contacts and filter to non-terminal statuses.
+    contacts = (
+        client.table("contacts")
+        .select("*")
+        .in_("id", replied_contact_ids)
+        .execute()
+    ).data or []
+
+    return [
+        c for c in contacts
+        if c.get("status") not in TERMINAL_STATUSES
+    ]
+
+
 def search_contacts_by_domain(client: Client, domain: str) -> list[dict]:
     result = (
         client.table("contacts")

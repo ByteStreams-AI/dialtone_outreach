@@ -22,6 +22,33 @@
 
 ## Journal Entries
 
+### 2026-05-01 — Feature — Milestone 3: Reply Detection Automation (IMAP Polling)
+
+**Phase:** Milestone 3 — Reply Detection Automation.
+
+**Files Changed:**
+
+- `outreach/reply_checker.py` (new) — IMAP-based reply scanner. Connects to the reply mailbox, searches UNSEEN messages, matches senders against `contacts.owner_email`, and marks matched contacts + email_log rows as replied. Messages from known contacts are marked SEEN in IMAP after processing.
+- `outreach/audit.py` (new) — Status-mismatch detector. `run_audit()` finds contacts where `email_log.replied_at` is set but `contacts.status` is not terminal, and optionally fixes them.
+- `outreach/config.py` — New env vars: `REPLY_CHECK_IMAP_HOST`, `REPLY_CHECK_IMAP_PORT`, `REPLY_CHECK_EMAIL`, `REPLY_CHECK_PASSWORD`.
+- `outreach/db.py` — New helpers: `find_contact_by_owner_email()` (case-insensitive ILIKE lookup), `find_reply_status_mismatches()` (cross-table audit query).
+- `cli.py` — New `check-replies` command with `--dry-run`, `--audit`, and `--fix` flags.
+- `.env.example` — Documented all `REPLY_CHECK_*` env vars with Gmail App Password instructions.
+- `README.md` — Replaced placeholder "Connecting Reply Detection" section with full IMAP setup + cron instructions + M6 scheduling note. Added env vars to reference table.
+- `AGENTS.md` — Added `check-replies` to CLI cheatsheet.
+- `docs/project-status.md` — Ticked M3 implementation steps, documented mechanism decision, added M6 scheduling pivot note.
+
+**Summary:** Implemented IMAP-based reply detection as a CLI command (`python cli.py check-replies`). The mechanism was chosen over SES+SNS+Lambda because it requires no infrastructure changes (no MX records, no Lambda deployment), uses only Python stdlib (`imaplib`, `email`), and works with any mail provider. Automated scheduling is deferred to M6 — during the pilot phase, the operator runs `check-replies` manually before each cohort send. The audit command (`--audit [--fix]`) acts as a safety net for partial failures or manual Supabase edits that leave the two tables out of sync.
+
+**Notes:**
+
+- No new dependencies. `imaplib` and `email` are Python stdlib.
+- **Live test passed 2026-05-01.** Inserted a test contact with `owner_email=cottonbytes@gmail.com`, sent via `send-test`, replied from Gmail, ran `check-replies`: `Scanned: 1, Matched: 1`. Contact status flipped to `replied`, `email_log.replied_at` set on the most recent log row.
+- Bug fix during testing: the original `conn.fetch(uid, "(RFC822)")` implicitly marks messages as `\Seen` in IMAP, so unmatched messages disappeared on the next run. Switched to `BODY.PEEK[]` which fetches without setting the flag — only explicitly matched messages are marked SEEN now.
+- Scheduling was explicitly deferred to M6. The `check-replies` command is a standard CLI entry point, so it slots into whatever scheduling infrastructure M6 provisions (cron on EC2, EventBridge + Lambda, etc.) without code changes.
+
+---
+
 ### 2026-04-30 — Feature — First Live Cohort Sent (`batch-1`, 5 contacts)
 
 **Phase:** Milestone 2 step 5 — first live send. Warmup day 0.

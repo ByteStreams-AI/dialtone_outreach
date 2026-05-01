@@ -70,25 +70,29 @@ Each milestone below has a corresponding GitHub issue on `ByteStreams-AI/dialton
 
 ### Milestone 3 — Reply Detection Automation
 
-- [ ] **Milestone complete**
+- [x] **Milestone complete**
 
 **Goal:** Contacts who reply are automatically marked `replied` so the sequence stops without manual Supabase edits.
 
 **Issue:** [#3](https://github.com/ByteStreams-AI/dialtone_outreach/issues/3)
 
+**Mechanism decision:** IMAP polling via `python cli.py check-replies`. Uses stdlib `imaplib` + `email` (no new deps). Works with any mail provider (Gmail, Cloudflare Email Routing, etc.). Automated scheduling (cron, EventBridge + Lambda, persistent host) is deferred to M6 — during the pilot phase, the operator runs `check-replies` manually before each cohort send.
+
 **Steps:**
 
-- [ ] Pick the inbound mechanism. Options documented in [README.md:255-261](../README.md#L255-L261): Gmail Apps Script, AWS SES + SNS inbound, or a forwarding service. Decision should weigh setup cost vs reliability.
-- [ ] Implement the chosen path:
-  - [ ] Write the inbound handler (Lambda, Apps Script, or webhook endpoint).
-  - [ ] Match incoming sender email to a `contacts.owner_email` row.
-  - [ ] Call `db.mark_contact_replied()` and `db.mark_email_replied()`.
-- [ ] Test with a deliberate reply from a verified test inbox.
-- [ ] Add a small status check that surfaces "replied but still in active status" mismatches, so a missed webhook doesn't silently keep emailing a replier.
+- [x] Pick the inbound mechanism. Options documented in [README.md](../README.md#reply-detection-milestone-3): Gmail Apps Script, AWS SES + SNS inbound, or a forwarding service. Decision should weigh setup cost vs reliability. **Decision: IMAP polling** — simplest, no infrastructure changes, stdlib-only, meets 5-minute SLA via cron (scheduling deferred to M6).
+- [x] Implement the chosen path:
+  - [x] Write the inbound handler — `outreach/reply_checker.py` (IMAP scanner with `check_replies()` entry point).
+  - [x] Match incoming sender email to a `contacts.owner_email` row — `db.find_contact_by_owner_email()` (case-insensitive ILIKE lookup).
+  - [x] Call `db.mark_contact_replied()` and `db.mark_email_replied()` — `_process_reply()` calls both; marks the most recent `email_log` row for the contact.
+- [x] Test with a deliberate reply from a verified test inbox. **Verified 2026-05-01** — inserted a test contact (`cottonbytes@gmail.com`), sent via `send-test`, replied from Gmail, ran `check-replies`: `Scanned: 1, Matched: 1`. Contact status flipped to `replied`, `email_log.replied_at` set. Bug fix during testing: switched IMAP fetch from `RFC822` to `BODY.PEEK[]` so unmatched messages stay UNSEEN.
+- [x] Add a small status check that surfaces "replied but still in active status" mismatches — `outreach/audit.py` + `python cli.py check-replies --audit [--fix]`. `db.find_reply_status_mismatches()` catches contacts where `email_log.replied_at` is set but `contacts.status` is not terminal.
+
+**Code support:** `outreach/reply_checker.py`, `outreach/audit.py`, `outreach/config.py` (`REPLY_CHECK_*` env vars), `outreach/db.py` (`find_contact_by_owner_email`, `find_reply_status_mismatches`). CLI: `python cli.py check-replies [--dry-run]`, `python cli.py check-replies --audit [--fix]`.
 
 **Acceptance criteria:**
 
-- A reply from a known contact updates `contacts.status = 'replied'` within 5 minutes of arrival.
+- A reply from a known contact updates `contacts.status = 'replied'` within 5 minutes of arrival (when run via cron; manual runs are immediate).
 - The runner skips that contact on the next `python cli.py run`.
 
 ---
@@ -156,7 +160,7 @@ Each milestone below has a corresponding GitHub issue on `ByteStreams-AI/dialton
 - [ ] Add `.github/workflows/` for lint and tests (minimum: `ruff` or `flake8`, plus a smoke test that imports every module).
 - [ ] Configure branch protection on `main` — require passing checks before merge.
 - [ ] Confirm Cloudflare and any other secrets are populated on `ByteStreams-AI/dialtone_outreach` (owned by the user — only verify workflow files reference the right secret names).
-- [ ] Pick a scheduling target — AWS EventBridge → Lambda (consistent with the existing DialTone stack) or cron on a small EC2/host. Document the choice and provision it.
+- [ ] Pick a scheduling target — AWS EventBridge → Lambda (consistent with the existing DialTone stack) or cron on a small EC2/host. Document the choice and provision it. **Note:** This also covers scheduling `python cli.py check-replies` (deferred from M3). The reply-checker is a CLI command by design so it can be scheduled alongside the daily `run` command on the same host / Lambda.
 - [ ] Capture run logs to a persistent location (CloudWatch Logs, or a logfile in a known path).
 - [ ] Add an alert for SES bounce/complaint rate thresholds.
 
