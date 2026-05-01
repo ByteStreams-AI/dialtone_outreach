@@ -9,8 +9,8 @@ anything live.
 
 DialTone Outreach is a cold-email sequencer for restaurant owners.
 
-- **Stack:** AWS SES + Supabase (Postgres) + Click/Rich CLI, with a planned
-  local FastAPI + Jinja2 + HTMX UI for non-technical reviewers.
+- **Stack:** AWS SES + Supabase (Postgres) + Click/Rich CLI + local
+  FastAPI + Jinja2 + HTMX UI for non-technical reviewers.
 - **Source of truth for milestones:** [docs/project-status.md](docs/project-status.md).
   Every milestone there has a matching GitHub issue on
   `ByteStreams-AI/dialtone_outreach`.
@@ -40,6 +40,10 @@ developer/
   developer-journal.md       Running engineering log
   cohorts/                   Locked-cohort JSON snapshots (gitignored)
   template-previews/         Generated HTML / text previews (gitignored)
+web/
+  app.py                     FastAPI app + routes (local viewer, no send)
+  templates/                 Jinja2 page templates (HTMX-driven)
+  static/                    CSS (Pico CSS overrides)
 ```
 
 ## Environment

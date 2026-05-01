@@ -22,6 +22,37 @@
 
 ## Journal Entries
 
+### 2026-05-01 — Feature — Milestone 4: Local Web UI v1
+
+**Phase:** Milestone 4 — Local Web UI v1.
+
+**Files Changed:**
+
+- `web/__init__.py` (new) — package marker.
+- `web/app.py` (new) — FastAPI app with 7 routes: dashboard (`/`), contacts list (`/contacts`), HTMX partial (`/partials/contacts`), contact detail (`/contacts/{id}`), status update POST, notes update POST, run preview (`/run-preview`).
+- `web/templates/base.html` (new) — layout with nav (Dashboard | Contacts | Run Preview), Pico CSS CDN, HTMX CDN.
+- `web/templates/dashboard.html` (new) — status counts table, conversion funnel, emails sent today.
+- `web/templates/contacts.html` (new) — search + filter form with HTMX-driven partial updates.
+- `web/templates/partials/contact_rows.html` (new) — HTMX partial for contacts table `<tbody>`.
+- `web/templates/contact_detail.html` (new) — owner info, email history, status buttons, notes editor.
+- `web/templates/run_preview.html` (new) — read-only dry-run table.
+- `web/static/style.css` (new) — status badges, filter bar, nav active states on Pico CSS.
+- `outreach/db.py` — new `search_contacts()` (multi-field filter with `or_` for free-text) and `update_contact_notes()`.
+- `requirements.txt` — added `fastapi==0.115.0`, `uvicorn[standard]==0.32.0`, `python-multipart==0.0.20`.
+- `AGENTS.md` — repo layout updated with `web/` entries, stack description updated.
+- `docs/project-status.md` — all M4 steps ticked, milestone marked complete.
+- `docs/web-ui-guide.md` (new) — user guide for non-technical reviewers.
+
+**Summary:** Built a local FastAPI + Jinja2 + HTMX web UI for non-technical reviewers to monitor outreach and update contact statuses without touching the CLI or Supabase. Four screens: Dashboard (status counts, conversion funnel, emails today), Contacts (search/filter with HTMX partials), Contact Detail (status edit buttons, email history, notes), Run Preview (dry-run view). Reuses `outreach/db.py` and `outreach/sequence.py` directly — no duplicated business logic. Styled with Pico CSS (CDN) + custom overrides. No build step, no auth (local-only by design). Sending is not exposed.
+
+**Bug fixes during development:**
+
+- HTMX CDN URL `https://unpkg.com/htmx.org@1.9.12` returns a 301 redirect; some browsers block redirecting script sources. Fixed by using the full path `.../dist/htmx.min.js`.
+- HTMX `hx-trigger` with `from:` selectors on a parent form was unreliable for bubbled events. Fixed by moving `hx-get`/`hx-trigger`/`hx-include` to each individual input/select.
+- FastAPI `Optional[int]` query param rejects empty strings (`score=`) with 422. Fixed by accepting `Optional[str]` and parsing with `_parse_score()`.
+
+---
+
 ### 2026-05-01 — Feature — Milestone 3: Reply Detection Automation (IMAP Polling)
 
 **Phase:** Milestone 3 — Reply Detection Automation.

@@ -99,7 +99,7 @@ Each milestone below has a corresponding GitHub issue on `ByteStreams-AI/dialton
 
 ### Milestone 4 — Local Web UI v1
 
-- [ ] **Milestone complete**
+- [x] **Milestone complete**
 
 **Goal:** Non-technical reviewers can monitor outreach and update contact statuses in a browser without touching the CLI or Supabase.
 
@@ -107,15 +107,17 @@ Each milestone below has a corresponding GitHub issue on `ByteStreams-AI/dialton
 
 **Steps:**
 
-- [ ] Scaffold a `web/` package: `web/app.py` (FastAPI), `web/templates/` (Jinja2), `web/static/` (CSS). Add `fastapi`, `uvicorn`, `python-multipart` to `requirements.txt`.
-- [ ] Build the four screens:
-  - [ ] **Dashboard** — status counts, conversion funnel, emails-sent-today (reuse logic from [outreach/runner.py:137-186](../outreach/runner.py#L137-L186)).
-  - [ ] **Contacts list** — searchable, filterable by status / lead score / city. HTMX-backed search input.
-  - [ ] **Contact detail** — owner info, full email history, status edit buttons (`replied`, `demo_booked`, `pilot`, `customer`, `not_interested`, `invalid`), notes editor.
-  - [ ] **Run preview** — read-only HTML rendering of `cli.py run --dry-run` output.
-- [ ] Reuse [outreach/db.py](../outreach/db.py) and [outreach/templates.py](../outreach/templates.py) directly — no duplicated business logic.
-- [ ] Bind to `127.0.0.1` only. No auth (local-only by design); document this constraint clearly in the README section.
-- [ ] Add a `make web` (or equivalent) command and document the run instructions.
+- [x] Scaffold a `web/` package: `web/app.py` (FastAPI), `web/templates/` (Jinja2), `web/static/` (CSS). Add `fastapi`, `uvicorn[standard]`, `python-multipart` to `requirements.txt`. Styled with Pico CSS (CDN, classless) + HTMX (CDN). No build step.
+- [x] Build the four screens:
+  - [x] **Dashboard** — status counts table, conversion funnel (Email → Demo → Pilot → Customer), emails sent today. Reuses `db.get_status_counts()` and `db.get_emails_sent_today()`.
+  - [x] **Contacts list** — searchable, filterable by status / lead score / city. HTMX-backed search via `GET /partials/contacts`. New `db.search_contacts()` helper.
+  - [x] **Contact detail** — owner info, full email history, status edit buttons (`replied`, `demo_booked`, `pilot`, `customer`, `not_interested`, `invalid`), notes editor with save.
+  - [x] **Run preview** — read-only table of contacts due today with seq number, subject, owner email. Reuses `sequence.get_contacts_due()` + `render_email()`.
+- [x] Reuse [outreach/db.py](../outreach/db.py) and [outreach/templates.py](../outreach/templates.py) directly — no duplicated business logic.
+- [x] Bind to `127.0.0.1` only. No auth (local-only by design); documented in README.
+- [x] Start command: `uvicorn web.app:app --reload --host 127.0.0.1 --port 8000`. Documented in README.
+
+**Code support:** `web/app.py` (FastAPI routes), `web/templates/` (6 Jinja2 templates), `web/static/style.css`, `outreach/db.py` (new: `search_contacts()`, `update_contact_notes()`).
 
 **Acceptance criteria:**
 

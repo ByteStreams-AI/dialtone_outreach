@@ -188,6 +188,63 @@ def find_reply_status_mismatches(client: Client) -> list[dict]:
     return [c for c in contacts if c.get("status") not in TERMINAL_STATUSES]
 
 
+def search_contacts(
+    client: Client,
+    *,
+    q: Optional[str] = None,
+    status: Optional[str] = None,
+    score: Optional[int] = None,
+    city: Optional[str] = None,
+) -> list[dict]:
+    """Search and filter contacts for the web UI.
+
+    Args:
+        client: Supabase client.
+        q: Free-text search matched against restaurant_name, owner_email,
+            and domain (case-insensitive).
+        status: Filter to a single status value.
+        score: Filter to a single lead_score value.
+        city: Filter by city (case-insensitive substring match).
+
+    Returns:
+        List of matching contact rows, ordered by lead_score DESC.
+    """
+    query = client.table("contacts").select("*")
+    if status:
+        query = query.eq("status", status)
+    if score is not None:
+        query = query.eq("lead_score", score)
+    if city:
+        query = query.ilike("city", f"%{city}%")
+    if q:
+        # Strip PostgREST special chars to prevent filter injection.
+        # Commas split or_() conditions; parens alter grouping.
+        import re
+        safe_q = re.sub(r"[,()]", "", q)
+        if safe_q.strip():
+            query = query.or_(
+                f"restaurant_name.ilike.%{safe_q}%,"
+                f"owner_email.ilike.%{safe_q}%,"
+                f"domain.ilike.%{safe_q}%"
+            )
+    query = query.order("lead_score", desc=True).limit(200)
+    return query.execute().data or []
+
+
+def update_contact_notes(client: Client, contact_id: str, notes: str) -> None:
+    """Replace the notes field on a contact.
+
+    Args:
+        client: Supabase client.
+        contact_id: UUID of the contact.
+        notes: New notes text (may be empty).
+    """
+    client.table("contacts").update({
+        "notes": notes,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", contact_id).execute()
+
+
 def search_contacts_by_domain(client: Client, domain: str) -> list[dict]:
     result = (
         client.table("contacts").select("*").ilike("domain", f"%{domain}%").execute()

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Run Preview — DialTone Outreach{% endblock %}
+{% block content %}
+<h2>Run Preview</h2>
+<p>Contacts that would receive an email if <code>python cli.py run</code> were executed now.</p>
+
+{% if rows %}
+<table>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Restaurant</th>
+      <th>City</th>
+      <th>Owner</th>
+      <th>Seq</th>
+      <th>Score</th>
+      <th>Subject</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td><a href="/contacts/{{ r.id }}">{{ r.restaurant_name }}</a></td>
+      <td>{{ r.city }}</td>
+      <td>{{ r.owner_email }}</td>
+      <td>{{ r.seq_num }}</td>
+      <td>{{ r.lead_score }}</td>
+      <td>{{ r.subject }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p><small>{{ rows|length }} contact(s) due for outreach.</small></p>
+{% else %}
+<p>No contacts are due for outreach today.</p>
+{% endif %}
+{% endblock %}
