@@ -1,0 +1,11 @@
+{% for c in contacts %}
+<tr>
+  <td><a href="/contacts/{{ c.id }}">{{ c.restaurant_name or "—" }}</a></td>
+  <td>{{ c.city or "—" }}</td>
+  <td>{{ c.owner_email or "—" }}</td>
+  <td><span class="badge badge-{{ c.status }}">{{ c.status or "—" }}</span></td>
+  <td>{{ c.lead_score or "—" }}</td>
+</tr>
+{% else %}
+<tr><td colspan="5">No contacts match your filters.</td></tr>
+{% endfor %}

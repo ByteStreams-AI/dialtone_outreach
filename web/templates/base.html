@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}DialTone Outreach{% endblock %}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js"></script>
+</head>
+<body>
+  <header class="container">
+    <nav>
+      <ul>
+        <li><strong>DialTone Outreach</strong></li>
+      </ul>
+      <ul>
+        <li><a href="/" {% if page == 'dashboard' %}class="active"{% endif %}>Dashboard</a></li>
+        <li><a href="/contacts" {% if page == 'contacts' %}class="active"{% endif %}>Contacts</a></li>
+        <li><a href="/run-preview" {% if page == 'run_preview' %}class="active"{% endif %}>Run Preview</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="container">
+    <small>DialTone Outreach — local viewer (read + status edit only)</small>
+  </footer>
+</body>
+</html>

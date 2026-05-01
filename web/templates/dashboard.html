@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — DialTone Outreach{% endblock %}
+{% block content %}
+<h2>Dashboard</h2>
+
+<div class="grid">
+  <article>
+    <header>Emails Sent Today</header>
+    <p class="big-number">{{ today }}</p>
+  </article>
+  <article>
+    <header>Total Contacts</header>
+    <p class="big-number">{{ total }}</p>
+  </article>
+  <article>
+    <header>Emails Sent (all time)</header>
+    <p class="big-number">{{ sent }}</p>
+  </article>
+</div>
+
+<h3>Status Breakdown</h3>
+<table>
+  <thead>
+    <tr><th>Status</th><th>Count</th><th>%</th></tr>
+  </thead>
+  <tbody>
+    {% for s in status_order %}
+    <tr>
+      <td><span class="badge badge-{{ s }}">{{ s }}</span></td>
+      <td>{{ counts.get(s, 0) }}</td>
+      <td>{{ "%.1f%%"|format(counts.get(s, 0) / total * 100) if total else "—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr><td><strong>Total</strong></td><td><strong>{{ total }}</strong></td><td></td></tr>
+  </tfoot>
+</table>
+
+<h3>Conversion Funnel</h3>
+<table>
+  <thead>
+    <tr><th>Stage</th><th>Rate</th><th>Target</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Email → Demo</td>
+      <td>{{ funnel.email_to_demo }} ({{ demos }}/{{ sent }})</td>
+      <td>3–6%</td>
+    </tr>
+    <tr>
+      <td>Demo → Pilot</td>
+      <td>{{ funnel.demo_to_pilot }} ({{ pilots }}/{{ demos }})</td>
+      <td>30–50%</td>
+    </tr>
+    <tr>
+      <td>Pilot → Customer</td>
+      <td>{{ funnel.pilot_to_customer }} ({{ customers }}/{{ pilots }})</td>
+      <td>50–80%</td>
+    </tr>
+  </tbody>
+</table>
+{% endblock %}

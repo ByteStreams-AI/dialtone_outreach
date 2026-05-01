@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Contacts — DialTone Outreach{% endblock %}
+{% block content %}
+<h2>Contacts</h2>
+
+<div id="filter-form" class="filter-bar">
+  <div class="grid">
+    <input type="search" name="q" value="{{ q }}"
+           placeholder="Search restaurant, email, domain…"
+           hx-get="/partials/contacts"
+           hx-target="#contact-rows"
+           hx-trigger="input changed delay:300ms, search"
+           hx-include="#filter-form">
+    <select name="status"
+            hx-get="/partials/contacts"
+            hx-target="#contact-rows"
+            hx-trigger="change"
+            hx-include="#filter-form">
+      <option value="">All statuses</option>
+      {% for s in status_order %}
+      <option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+    <select name="score"
+            hx-get="/partials/contacts"
+            hx-target="#contact-rows"
+            hx-trigger="change"
+            hx-include="#filter-form">
+      <option value="">All scores</option>
+      {% for i in range(5, 0, -1) %}
+      <option value="{{ i }}" {% if score == i %}selected{% endif %}>{{ i }}</option>
+      {% endfor %}
+    </select>
+    <input type="text" name="city" value="{{ city }}" placeholder="City…"
+           hx-get="/partials/contacts"
+           hx-target="#contact-rows"
+           hx-trigger="input changed delay:300ms"
+           hx-include="#filter-form">
+    <a href="/contacts" class="btn-reset" role="button">Reset</a>
+  </div>
+</div>
+
+<table role="grid">
+  <thead>
+    <tr>
+      <th>Restaurant</th>
+      <th>City</th>
+      <th>Owner</th>
+      <th>Status</th>
+      <th>Score</th>
+    </tr>
+  </thead>
+  <tbody id="contact-rows">
+    {% include "partials/contact_rows.html" %}
+  </tbody>
+</table>
+
+<p><small>{{ contacts|length }} contact(s) shown</small></p>
+{% endblock %}

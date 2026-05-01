@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}{{ c.restaurant_name or "Contact" }} — DialTone Outreach{% endblock %}
+{% block content %}
+<hgroup>
+  <h2>{{ c.restaurant_name or "—" }}</h2>
+  <p>{{ c.domain or "" }}</p>
+</hgroup>
+
+<div class="grid">
+  <div>
+    <h4>Owner</h4>
+    <p>
+      {{ c.owner_first or "" }} {{ c.owner_last or "" }}<br>
+      {{ c.owner_email or "—" }}<br>
+      {{ c.owner_phone or "" }}
+    </p>
+    <h4>Location</h4>
+    <p>{{ c.city or "—" }}, {{ c.state or "—" }} {{ c.zip or "" }}</p>
+    <h4>Lead Score</h4>
+    <p>{{ c.lead_score or "—" }}</p>
+  </div>
+
+  <div>
+    <h4>Status</h4>
+    <p><span class="badge badge-{{ c.status }} badge-lg">{{ c.status }}</span></p>
+
+    <h4>Update Status</h4>
+    <div class="status-buttons">
+      {% for s in editable_statuses %}
+      <form method="post" action="/contacts/{{ c.id }}/status" style="display:inline">
+        <input type="hidden" name="status" value="{{ s }}">
+        <button type="submit"
+                class="btn-status btn-{{ s }}"
+                {% if c.status == s %}disabled{% endif %}>
+          {{ s }}
+        </button>
+      </form>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<h3>Email History</h3>
+{% if email_log %}
+<table>
+  <thead>
+    <tr>
+      <th>Seq</th>
+      <th>Subject</th>
+      <th>Sent</th>
+      <th>Opened</th>
+      <th>Replied</th>
+      <th>Bounced</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in email_log %}
+    <tr>
+      <td>{{ e.sequence_number }}</td>
+      <td>{{ e.subject or "—" }}</td>
+      <td>{{ e.sent_at[:10] if e.sent_at else "—" }}</td>
+      <td>{{ "✓" if e.opened_at else "—" }}</td>
+      <td>{{ "✓" if e.replied_at else "—" }}</td>
+      <td>{{ "✓" if e.bounced_at else "—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No emails sent yet.</p>
+{% endif %}
+
+<h3>Notes</h3>
+<form method="post" action="/contacts/{{ c.id }}/notes">
+  <textarea name="notes" rows="4" placeholder="Add notes…">{{ c.notes or "" }}</textarea>
+  <button type="submit">Save Notes</button>
+</form>
+
+<p><a href="/contacts">← Back to contacts</a></p>
+{% endblock %}

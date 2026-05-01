@@ -1,0 +1,93 @@
+/* ── Layout ─────────────────────────────────────────────────── */
+.big-number {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+/* ── Nav active state ──────────────────────────────────────── */
+nav a.active {
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+/* ── Status badges ─────────────────────────────────────────── */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #fff;
+  background: #6c757d;
+}
+.badge-lg { font-size: 1rem; padding: 4px 12px; }
+
+.badge-new              { background: #6c757d; }
+.badge-emailed_1,
+.badge-emailed_2,
+.badge-emailed_3        { background: #0d6efd; }
+.badge-breakup_sent     { background: #6610f2; }
+.badge-re_engage        { background: #6f42c1; }
+.badge-replied          { background: #ffc107; color: #000; }
+.badge-demo_booked      { background: #198754; }
+.badge-pilot            { background: #0dcaf0; color: #000; }
+.badge-customer         { background: #20c997; }
+.badge-not_interested   { background: #dc3545; }
+.badge-invalid          { background: #adb5bd; color: #000; }
+
+/* ── Status edit buttons ───────────────────────────────────── */
+.status-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.btn-status {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  background: #f8f9fa;
+  color: #212529;
+}
+.btn-status:hover { opacity: 0.85; }
+.btn-status:disabled { opacity: 0.4; cursor: default; }
+
+.btn-replied          { border-color: #ffc107; }
+.btn-demo_booked      { border-color: #198754; }
+.btn-pilot            { border-color: #0dcaf0; }
+.btn-customer         { border-color: #20c997; }
+.btn-not_interested   { border-color: #dc3545; }
+.btn-invalid          { border-color: #adb5bd; }
+
+/* ── Filter bar ────────────────────────────────────────────── */
+.filter-bar input,
+.filter-bar select {
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  height: 2.2rem;
+}
+.filter-bar .grid {
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+.btn-reset {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  height: 2.2rem;
+  margin-bottom: 0;
+  background: #f8f9fa;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  color: #212529;
+  text-decoration: none;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.btn-reset:hover { background: #e9ecef; }
+
+/* ── Tables ────────────────────────────────────────────────── */
+table { font-size: 0.9rem; }
