@@ -1,11 +1,17 @@
 """
 db.py — Supabase client and all database operations
 """
+
 from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Optional
 from supabase import create_client, Client
-from outreach.config import SUPABASE_URL, SUPABASE_SERVICE_KEY, TERMINAL_STATUSES, Status
+from outreach.config import (
+    SUPABASE_URL,
+    SUPABASE_SERVICE_KEY,
+    TERMINAL_STATUSES,
+    Status,
+)
 
 
 def get_client() -> Client:
@@ -14,27 +20,20 @@ def get_client() -> Client:
 
 # ── Contacts ──────────────────────────────────────────────────────
 
+
 def upsert_contact(client: Client, data: dict) -> dict:
     """
     Insert or update a contact keyed on domain.
     Returns the upserted row.
     """
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    result = (
-        client.table("contacts")
-        .upsert(data, on_conflict="domain")
-        .execute()
-    )
+    result = client.table("contacts").upsert(data, on_conflict="domain").execute()
     return result.data[0] if result.data else {}
 
 
 def get_contact(client: Client, contact_id: str) -> Optional[dict]:
     result = (
-        client.table("contacts")
-        .select("*")
-        .eq("id", contact_id)
-        .single()
-        .execute()
+        client.table("contacts").select("*").eq("id", contact_id).single().execute()
     )
     return result.data
 
@@ -46,26 +45,27 @@ def get_contacts_due_for_outreach(client: Client, limit: int = 20) -> list[dict]
     Ordered by lead_score DESC so hottest leads go first.
     """
     result = (
-        client.table("contacts_due_for_outreach")
-        .select("*")
-        .limit(limit)
-        .execute()
+        client.table("contacts_due_for_outreach").select("*").limit(limit).execute()
     )
     return result.data or []
 
 
 def update_contact_status(client: Client, contact_id: str, status: str) -> None:
-    client.table("contacts").update({
-        "status": status,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("id", contact_id).execute()
+    client.table("contacts").update(
+        {
+            "status": status,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    ).eq("id", contact_id).execute()
 
 
 def mark_contact_replied(client: Client, contact_id: str) -> None:
-    client.table("contacts").update({
-        "status": Status.REPLIED,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("id", contact_id).execute()
+    client.table("contacts").update(
+        {
+            "status": Status.REPLIED,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    ).eq("id", contact_id).execute()
 
 
 def unsubscribe_contact(
@@ -96,24 +96,20 @@ def unsubscribe_contact(
         audit_line = f"{audit_line} — {note}"
 
     existing = (
-        client.table("contacts")
-        .select("notes")
-        .eq("id", contact_id)
-        .single()
-        .execute()
+        client.table("contacts").select("notes").eq("id", contact_id).single().execute()
     ).data or {}
     prior_notes = (existing.get("notes") or "").strip()
-    merged_notes = (
-        f"{prior_notes}\n{audit_line}".strip() if prior_notes else audit_line
-    )
+    merged_notes = f"{prior_notes}\n{audit_line}".strip() if prior_notes else audit_line
 
     result = (
         client.table("contacts")
-        .update({
-            "status": Status.NOT_INTERESTED,
-            "notes": merged_notes,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        })
+        .update(
+            {
+                "status": Status.NOT_INTERESTED,
+                "notes": merged_notes,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
         .eq("id", contact_id)
         .execute()
     )
@@ -121,7 +117,9 @@ def unsubscribe_contact(
 
 
 def get_all_contacts(client: Client) -> list[dict]:
-    result = client.table("contacts").select("*").order("created_at", desc=True).execute()
+    result = (
+        client.table("contacts").select("*").order("created_at", desc=True).execute()
+    )
     return result.data or []
 
 
@@ -136,17 +134,69 @@ def get_contacts_by_status(client: Client, status: str) -> list[dict]:
     return result.data or []
 
 
-def search_contacts_by_domain(client: Client, domain: str) -> list[dict]:
+def find_contact_by_owner_email(client: Client, email: str) -> Optional[dict]:
+    """Look up a single contact by ``owner_email``.
+
+    Args:
+        client: Supabase client.
+        email: The owner email address to match (case-insensitive).
+
+    Returns:
+        The contact row dict, or ``None`` if no match is found.
+    """
     result = (
         client.table("contacts")
         .select("*")
-        .ilike("domain", f"%{domain}%")
+        .ilike("owner_email", email)
+        .limit(1)
         .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+def find_reply_status_mismatches(client: Client) -> list[dict]:
+    """Find contacts with a replied email but a non-terminal status.
+
+    These are contacts where ``email_log.replied_at`` is set on at least
+    one row but ``contacts.status`` has not been flipped to ``replied``
+    (or another terminal status). This can happen if a webhook or
+    ``check-replies`` run failed partway through.
+
+    Returns:
+        List of contact rows that need their status corrected.
+    """
+    # Pull all email_log rows that have replied_at set.
+    # Use an explicit limit well above the Supabase default (1000) so we
+    # don't silently miss rows once the database grows.
+    replied_logs = (
+        client.table("email_log")
+        .select("contact_id")
+        .not_.is_("replied_at", "null")
+        .limit(10_000)
+        .execute()
+    ).data or []
+    if not replied_logs:
+        return []
+
+    replied_contact_ids = list({row["contact_id"] for row in replied_logs})
+
+    # Pull those contacts and filter to non-terminal statuses.
+    contacts = (
+        client.table("contacts").select("*").in_("id", replied_contact_ids).execute()
+    ).data or []
+
+    return [c for c in contacts if c.get("status") not in TERMINAL_STATUSES]
+
+
+def search_contacts_by_domain(client: Client, domain: str) -> list[dict]:
+    result = (
+        client.table("contacts").select("*").ilike("domain", f"%{domain}%").execute()
     )
     return result.data or []
 
 
 # ── Email log ─────────────────────────────────────────────────────
+
 
 def log_email_sent(
     client: Client,
@@ -156,26 +206,26 @@ def log_email_sent(
     message_id: str = None,
 ) -> dict:
     row = {
-        "contact_id":       contact_id,
-        "sequence_number":  sequence_number,
-        "subject":          subject,
-        "message_id":       message_id,
-        "sent_at":          datetime.now(timezone.utc).isoformat(),
+        "contact_id": contact_id,
+        "sequence_number": sequence_number,
+        "subject": subject,
+        "message_id": message_id,
+        "sent_at": datetime.now(timezone.utc).isoformat(),
     }
     result = client.table("email_log").insert(row).execute()
     return result.data[0] if result.data else {}
 
 
 def mark_email_opened(client: Client, log_id: str) -> None:
-    client.table("email_log").update({
-        "opened_at": datetime.now(timezone.utc).isoformat()
-    }).eq("id", log_id).execute()
+    client.table("email_log").update(
+        {"opened_at": datetime.now(timezone.utc).isoformat()}
+    ).eq("id", log_id).execute()
 
 
 def mark_email_replied(client: Client, log_id: str) -> None:
-    client.table("email_log").update({
-        "replied_at": datetime.now(timezone.utc).isoformat()
-    }).eq("id", log_id).execute()
+    client.table("email_log").update(
+        {"replied_at": datetime.now(timezone.utc).isoformat()}
+    ).eq("id", log_id).execute()
 
 
 def mark_email_bounced(
@@ -244,10 +294,10 @@ def get_email_log_metrics(
         query = query.in_("contact_id", contact_ids)
     rows = query.execute().data or []
     return {
-        "sent":       len(rows),
-        "opened":     sum(1 for r in rows if r.get("opened_at")),
-        "replied":    sum(1 for r in rows if r.get("replied_at")),
-        "bounced":    sum(1 for r in rows if r.get("bounced_at")),
+        "sent": len(rows),
+        "opened": sum(1 for r in rows if r.get("opened_at")),
+        "replied": sum(1 for r in rows if r.get("replied_at")),
+        "bounced": sum(1 for r in rows if r.get("bounced_at")),
         "complained": sum(1 for r in rows if r.get("complained_at")),
     }
 
@@ -288,6 +338,7 @@ def contact_has_replied(client: Client, contact_id: str) -> bool:
 
 
 # ── Stats ─────────────────────────────────────────────────────────
+
 
 def get_status_counts(client: Client) -> dict:
     result = client.table("contact_status_counts").select("*").execute()

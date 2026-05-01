@@ -117,6 +117,16 @@ UNSUBSCRIBE_EMAIL   = os.getenv("UNSUBSCRIBE_EMAIL", "unsubscribe@dialtone.menu"
 # UNSUBSCRIBE_EMAIL.
 UNSUBSCRIBE_URL     = os.getenv("UNSUBSCRIBE_URL", "").strip()
 
+# ── Reply detection (Milestone 3) ─────────────────────────────────
+# IMAP credentials for the mailbox that receives replies. The
+# ``check-replies`` CLI command connects to this mailbox, scans for
+# unread messages from known contacts, and marks them as replied in
+# Supabase.  Scheduling (cron / EventBridge) is deferred to M6.
+REPLY_CHECK_IMAP_HOST = os.getenv("REPLY_CHECK_IMAP_HOST", "imap.gmail.com")
+REPLY_CHECK_IMAP_PORT = int(os.getenv("REPLY_CHECK_IMAP_PORT", "993"))
+REPLY_CHECK_EMAIL     = os.getenv("REPLY_CHECK_EMAIL", "").strip()
+REPLY_CHECK_PASSWORD  = os.getenv("REPLY_CHECK_PASSWORD", "").strip()
+
 # ── Contact statuses ─────────────────────────────────────────────
 class Status:
     NEW           = "new"

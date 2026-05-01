@@ -357,13 +357,45 @@ use that URL in place of the mailto link.
 
 ---
 
-## Connecting Reply Detection
+## Reply Detection (Milestone 3)
 
-Currently, marking a contact as `replied` requires a manual status update in Supabase. To automate this:
+Replies from known contacts are detected automatically via IMAP polling.
+The `check-replies` command connects to the reply mailbox, scans unread
+messages, matches senders against `contacts.owner_email`, and flips
+matched contacts to `replied` so the sequence engine stops emailing them.
 
-1. **Gmail/Google Workspace** — use a Google Apps Script that watches your inbox and calls a Supabase edge function when a reply arrives from a known contact email.
-2. **AWS SES + SNS** — configure SES notification topics for bounces and complaints, and extend `email_client.py` to handle them.
-3. **Webhook** — if you route through a service like Mailgun or SendGrid in the future, reply webhooks are built-in.
+### Setup
+
+1. Set the `REPLY_CHECK_*` env vars in `.env` (see `.env.example`).
+   For Gmail, enable IMAP in Settings and create an
+   [App Password](https://myaccount.google.com/apppasswords).
+2. Test manually:
+
+```bash
+python cli.py check-replies --dry-run   # preview without writing
+python cli.py check-replies              # scan + mark matched contacts
+```
+
+3. Audit for status mismatches (safety net for partial failures):
+
+```bash
+python cli.py check-replies --audit        # report mismatches
+python cli.py check-replies --audit --fix  # auto-correct them
+```
+
+### Scheduling
+
+During the M2–M3 pilot phase, run `check-replies` manually before each
+cohort send. Automated scheduling (cron, EventBridge + Lambda, or a
+persistent host) is deferred to Milestone 6 (Production Operations)
+so the solution doesn't depend on a development machine.
+
+For local testing with cron (not recommended for production):
+
+```bash
+# crontab -e
+*/5 * * * * cd /path/to/dialtone_outreach && source .venv/bin/activate && python cli.py check-replies >> logs/reply-check.log 2>&1
+```
 
 ---
 
@@ -386,6 +418,10 @@ Currently, marking a contact as `replied` requires a manual status update in Sup
 | `UNSUBSCRIBE_URL` | — | (mailto fallback) | Optional URL-based unsubscribe endpoint |
 | `WARMUP_START_DATE` | — | (none) | ISO date (YYYY-MM-DD) for day 1 of the warmup ramp. Empty disables warmup. |
 | `WARMUP_DAY_LIMITS` | — | `5,5,5,10,10,10,20` | Comma-separated per-day caps used while warmup is active. |
+| `REPLY_CHECK_IMAP_HOST` | — | `imap.gmail.com` | IMAP server for reply-check mailbox |
+| `REPLY_CHECK_IMAP_PORT` | — | `993` | IMAP SSL port |
+| `REPLY_CHECK_EMAIL` | — | — | Email address of the reply-check mailbox |
+| `REPLY_CHECK_PASSWORD` | — | — | IMAP password (Gmail App Password recommended) |
 
 ---
 
