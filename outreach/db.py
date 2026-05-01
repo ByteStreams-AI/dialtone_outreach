@@ -217,11 +217,16 @@ def search_contacts(
     if city:
         query = query.ilike("city", f"%{city}%")
     if q:
-        query = query.or_(
-            f"restaurant_name.ilike.%{q}%,"
-            f"owner_email.ilike.%{q}%,"
-            f"domain.ilike.%{q}%"
-        )
+        # Strip PostgREST special chars to prevent filter injection.
+        # Commas split or_() conditions; parens alter grouping.
+        import re
+        safe_q = re.sub(r"[,()]", "", q)
+        if safe_q.strip():
+            query = query.or_(
+                f"restaurant_name.ilike.%{safe_q}%,"
+                f"owner_email.ilike.%{safe_q}%,"
+                f"domain.ilike.%{safe_q}%"
+            )
     query = query.order("lead_score", desc=True).limit(200)
     return query.execute().data or []
 

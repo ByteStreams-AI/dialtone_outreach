@@ -9,3 +9,4 @@
 {% else %}
 <tr><td colspan="5">No contacts match your filters.</td></tr>
 {% endfor %}
+<p id="contact-count" hx-swap-oob="true"><small>{{ contacts|length }} contact(s) shown</small></p>
