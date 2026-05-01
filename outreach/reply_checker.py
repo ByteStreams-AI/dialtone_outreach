@@ -15,6 +15,7 @@ Or via the CLI::
 
 Scheduling (cron, EventBridge, etc.) is deferred to Milestone 6.
 """
+
 from __future__ import annotations
 
 import email
@@ -245,14 +246,19 @@ def check_replies(*, dry_run: bool = False) -> CheckRepliesResult:
                     continue
 
                 match = _process_reply(
-                    client, sender, subject, dry_run=dry_run,
+                    client,
+                    sender,
+                    subject,
+                    dry_run=dry_run,
                 )
 
                 if match:
                     result.matched += 1
                     result.matches.append(match)
 
-                    label = "[yellow]DRY RUN[/yellow]" if dry_run else "[green]✓[/green]"
+                    label = (
+                        "[yellow]DRY RUN[/yellow]" if dry_run else "[green]✓[/green]"
+                    )
                     console.print(
                         f"  {label} Reply from [cyan]{match.restaurant_name}[/cyan]  "
                         f"<{sender}>  Subject: {subject[:60]}"
@@ -275,6 +281,9 @@ def check_replies(*, dry_run: bool = False) -> CheckRepliesResult:
             conn.close()
         except Exception:
             pass
-        conn.logout()
+        try:
+            conn.logout()
+        except Exception:
+            pass
 
     return result
