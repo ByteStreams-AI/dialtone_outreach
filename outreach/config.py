@@ -2,6 +2,9 @@
 config.py — centralised settings loaded from .env
 """
 import os
+from datetime import date, datetime
+from typing import Optional
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -29,9 +32,71 @@ SEQUENCE_DELAYS = {
     5: 60,   # Re-engage — 60 days after breakup (opener only)
 }
 
-# ── Outreach limits ───────────────────────────────────────────────
+# ── Outreach limits ────────────────────────────────────
 DAILY_SEND_LIMIT  = int(os.getenv("DAILY_SEND_LIMIT", 20))
 SEQUENCE_TIMEZONE = os.getenv("SEQUENCE_TIMEZONE", "America/Chicago")
+
+# ── Warmup ramp (Milestone 2) ────────────────────────────────────
+# Optional ISO date (YYYY-MM-DD) for day 1 of the SES warmup. When set,
+# ``effective_send_limit()`` returns the limit for the matching day from
+# WARMUP_DAY_LIMITS (a comma-separated list). After the schedule is
+# exhausted, ``DAILY_SEND_LIMIT`` is used as the steady-state value.
+WARMUP_START_DATE = os.getenv("WARMUP_START_DATE", "").strip()
+_WARMUP_DAY_LIMITS_RAW = os.getenv("WARMUP_DAY_LIMITS", "5,5,5,10,10,10,20").strip()
+try:
+    WARMUP_DAY_LIMITS: list[int] = [
+        int(part) for part in _WARMUP_DAY_LIMITS_RAW.split(",") if part.strip()
+    ]
+except ValueError as exc:
+    raise ValueError(
+        f"WARMUP_DAY_LIMITS must be a comma-separated list of ints, got "
+        f"{_WARMUP_DAY_LIMITS_RAW!r}"
+    ) from exc
+
+
+def _parse_warmup_start(value: str) -> Optional[date]:
+    """Parse the ``WARMUP_START_DATE`` env var into a ``date``.
+
+    Args:
+        value: Raw env string, e.g. ``"2026-05-05"``. Empty string disables
+            warmup mode.
+
+    Returns:
+        The parsed ``date`` instance or ``None`` when warmup is disabled.
+
+    Raises:
+        ValueError: If ``value`` is non-empty but not in ``YYYY-MM-DD``.
+    """
+    if not value:
+        return None
+    return datetime.strptime(value, "%Y-%m-%d").date()
+
+
+def effective_send_limit(today: Optional[date] = None) -> int:
+    """Return the active daily send limit for ``today``.
+
+    Honors the warmup ramp when ``WARMUP_START_DATE`` is set. If ``today``
+    is before day 1 of the ramp the function returns 0 so ``run`` exits
+    early instead of front-loading sends; once the ramp is exhausted the
+    steady-state ``DAILY_SEND_LIMIT`` is used.
+
+    Args:
+        today: Optional date override (useful for tests). Defaults to
+            ``date.today()`` in local time.
+
+    Returns:
+        The effective send limit for the day, in number of emails.
+    """
+    today = today or date.today()
+    start = _parse_warmup_start(WARMUP_START_DATE)
+    if start is None:
+        return DAILY_SEND_LIMIT
+    day_index = (today - start).days  # 0-based index into WARMUP_DAY_LIMITS
+    if day_index < 0:
+        return 0
+    if day_index >= len(WARMUP_DAY_LIMITS):
+        return DAILY_SEND_LIMIT
+    return WARMUP_DAY_LIMITS[day_index]
 
 # ── Calendly ─────────────────────────────────────────────────────
 CALENDLY_URL = os.getenv("CALENDLY_URL", "https://calendly.com/your-link")

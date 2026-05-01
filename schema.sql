@@ -60,6 +60,17 @@ create table if not exists email_log (
 create index if not exists email_log_contact_idx on email_log (contact_id);
 create index if not exists email_log_sent_at_idx on email_log (sent_at desc);
 
+-- ── Migration: bounce / complaint columns (Milestone 2) ──────────
+-- Idempotent: re-running schema.sql is safe even on existing databases.
+alter table email_log
+  add column if not exists bounced_at      timestamptz,
+  add column if not exists bounce_type     text,
+  add column if not exists complained_at   timestamptz,
+  add column if not exists complaint_type  text;
+
+create index if not exists email_log_bounced_at_idx    on email_log (bounced_at);
+create index if not exists email_log_complained_at_idx on email_log (complained_at);
+
 -- ── View: contacts due for outreach ──────────────────────────────
 -- Used by sequence.py — returns active contacts with an email address
 -- ordered by lead_score so hottest leads go first.

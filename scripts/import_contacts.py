@@ -22,6 +22,36 @@ console = Console()
 
 # ── Column mappings ───────────────────────────────────────────────
 
+# Columns that exist on the ``contacts`` table in ``schema.sql``. Apollo
+# CSVs ship with extra fields (``# Employees``, ``Industry``, ``Annual
+# Revenue``, etc.); the upsert loop below filters every record through
+# this set so PostgREST doesn't reject the row with
+# "Could not find the '<X>' column of 'contacts' in the schema cache."
+CONTACT_COLUMNS: frozenset[str] = frozenset({
+    "restaurant_name",
+    "business_phone",
+    "website",
+    "restaurant_email",
+    "domain",
+    "address",
+    "city",
+    "state",
+    "zip",
+    "rating",
+    "reviews",
+    "category",
+    "owner_first",
+    "owner_last",
+    "owner_email",
+    "owner_phone",
+    "title",
+    "status",
+    "lead_score",
+    "notes",
+    "source",
+})
+
+
 OUTSCRAPER_MAP = {
     "name":          "restaurant_name",
     "phone":         "business_phone",
@@ -193,8 +223,15 @@ def main(source, file, dry_run):
         client = get_client()
 
     for _, row in track(df.iterrows(), total=len(df), description="Importing..."):
-        record = {k: (None if pd.isna(v) else v)
-                  for k, v in row.to_dict().items()}
+        # Filter the record to columns that actually exist on the
+        # ``contacts`` table; otherwise Apollo's extra columns (e.g.
+        # ``# Employees``, ``Industry``) would be sent to PostgREST
+        # and rejected with a schema-cache error.
+        record = {
+            k: (None if pd.isna(v) else v)
+            for k, v in row.to_dict().items()
+            if k in CONTACT_COLUMNS
+        }
 
         # Skip rows with no domain
         if not record.get("domain"):

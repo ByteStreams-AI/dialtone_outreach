@@ -38,6 +38,7 @@ scripts/
   preview_templates.py       Render all 5 templates against real Apollo rows
 developer/
   developer-journal.md       Running engineering log
+  cohorts/                   Locked-cohort JSON snapshots (gitignored)
   template-previews/         Generated HTML / text previews (gitignored)
 ```
 
@@ -68,11 +69,21 @@ python cli.py stats
 python cli.py contact --email owner@example.com
 python cli.py contact --domain example.com
 python cli.py send-test --to verified@inbox.example [--seq 1] [--yes]
+python cli.py preflight
+python cli.py cohort lock   --name batch-1 --limit 5
+python cli.py cohort show   [--name batch-1]
+python cli.py cohort unlock --name batch-1
+python cli.py run --dry-run --cohort batch-1
+python cli.py metrics --since 7d
+python cli.py metrics --cohort batch-1
 python scripts/preview_templates.py [--csv PATH] [--out DIR] [--count N]
 ```
 
 `run` without `--dry-run` sends real email. Always start with `--dry-run`
-when verifying changes that touch sequencing, templates, or filtering.
+when verifying changes that touch sequencing, templates, or filtering. The
+M2 live cohort flow (`preflight` → `cohort lock` → `run --cohort`
+→ `metrics`) is documented in `docs/runbook-first-cohort.md`; cohorts under
+`developer/cohorts/` are gitignored because they contain recipient PII.
 
 ## Coding conventions
 
@@ -90,6 +101,14 @@ when verifying changes that touch sequencing, templates, or filtering.
   `COMPANY_LEGAL_NAME`, sender identity, and a working unsubscribe link. The
   helpers in `outreach/templates.py` already do this — keep them as the only
   HTML/text wrappers.
+- **Contact column allowlist:** `scripts/import_contacts.py::CONTACT_COLUMNS`
+  mirrors the columns on the `contacts` table in `schema.sql`. The import
+  loop filters every CSV row through it so Apollo's extra columns
+  (`# Employees`, `Industry`, `Annual Revenue`, etc.) are dropped before the
+  upsert. **If you add a column to `schema.sql`, add it to `CONTACT_COLUMNS`
+  too** — otherwise it will be silently dropped during import. Conversely,
+  if you remove a column from the schema, remove it here so the upsert
+  doesn't try to write a non-existent field.
 
 ## Verification before handing work back
 

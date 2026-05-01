@@ -66,6 +66,10 @@ apollo_export*.csv
 # churn on every template tweak.
 developer/template-previews/
 
+# Locked cohorts (Milestone 2) contain recipient PII; treat them as
+# local review-time artifacts only.
+developer/cohorts/
+
 # ── Editor / OS noise ────────────────────────────────────────────
 .idea/
 .vscode/

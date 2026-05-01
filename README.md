@@ -42,6 +42,7 @@ dialtone-outreach/
 │   └── preview_templates.py    # Render all 5 templates against real Apollo rows
 ├── developer/
 │   ├── developer-journal.md    # Running engineering log
+│   ├── cohorts/                # Locked cohorts (gitignored, recipient PII)
 │   └── template-previews/      # Generated previews (gitignored — regenerate with preview_templates.py)
 └── web/                        # Local FastAPI UI for non-technical reviewers (planned, milestone 4)
     ├── app.py                  # FastAPI application + routes
@@ -175,6 +176,28 @@ python cli.py stats
 python cli.py contact --email owner@rossieskitchen.com
 python cli.py contact --domain rossieskitchen.com
 ```
+
+---
+
+## First Live Cohort (Milestone 2)
+
+Once the M1 templates pass review, the M2 path is operator-driven but
+backed by repo tooling. Runbook lives in `docs/runbook-first-cohort.md`.
+Quick reference:
+
+```bash
+# Set the warmup start date in .env, then:
+python cli.py preflight                         # env / Supabase / SES / DNS
+python cli.py cohort lock --name batch-1 --limit 5
+python cli.py cohort show  --name batch-1       # review with stakeholders
+python cli.py run --dry-run --cohort batch-1
+python cli.py run          --cohort batch-1     # LIVE — only after approval
+python cli.py metrics --cohort batch-1          # bounce / complaint / replies
+python cli.py metrics --since 7d                # rolling window
+```
+
+The runner picks up the warmup limit automatically when `WARMUP_START_DATE`
+is set; manual overrides via `--limit` still work for one-off runs.
 
 ---
 
@@ -361,6 +384,8 @@ Currently, marking a contact as `replied` requires a manual status update in Sup
 | `COMPANY_LEGAL_NAME` | — | `ByteStreams LLC` | Legal entity name shown in the footer |
 | `UNSUBSCRIBE_EMAIL` | — | `unsubscribe@dialtone.menu` | Mailbox used in the `mailto:` unsubscribe link |
 | `UNSUBSCRIBE_URL` | — | (mailto fallback) | Optional URL-based unsubscribe endpoint |
+| `WARMUP_START_DATE` | — | (none) | ISO date (YYYY-MM-DD) for day 1 of the warmup ramp. Empty disables warmup. |
+| `WARMUP_DAY_LIMITS` | — | `5,5,5,10,10,10,20` | Comma-separated per-day caps used while warmup is active. |
 
 ---
 

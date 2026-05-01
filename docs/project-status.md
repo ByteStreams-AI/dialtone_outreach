@@ -7,7 +7,7 @@ last_updated: 2026-04-30
 
 ## Overview
 Cold email sequencer for restaurant owner outreach. Stack is AWS SES + Supabase + Click/Rich CLI, with a planned local FastAPI + Jinja2 + HTMX UI for non-technical reviewers.
-**Current state:** Sequence engine, contact import (Apollo), and CLI dashboard are functional. Repo migrated to `ByteStreams-AI/dialtone_outreach` (private). Email-generation hardening is in flight on `chore/email-gen-hardening` — templates are now CAN-SPAM compliant (real footer, working unsubscribe link, postal address guard), the opener uses the `{{ city }}` hook, and `render_email()` falls back gracefully when Apollo rows have a missing or noisy `restaurant_name`. No live emails sent yet. Reviewers still cannot self-serve outcomes — that gap is what motivates the web UI milestone.
+**Current state:** Sequence engine, contact import (Apollo), and CLI dashboard are functional. Repo migrated to `ByteStreams-AI/dialtone_outreach` (private). Milestone 1 (email-generation hardening) merged via PR #7. **First live cohort sent on 2026-04-30** (`batch-1`, 5 contacts, 0 send-time errors). Milestone 2 is now waiting on the 7-day metrics review (bounce / complaint / reply rates against the M2 thresholds). Reviewers still cannot self-serve outcomes — that gap is what motivates the web UI milestone.
 **Active scope decisions:**
 - Apollo is the only contact source. Outscraper paths and the merge step are out of scope.
 - Sending stays in the CLI. The web UI is read + status-edit only.
@@ -50,14 +50,16 @@ Each milestone below has a corresponding GitHub issue on `ByteStreams-AI/dialton
 
 **Issue:** [#2](https://github.com/ByteStreams-AI/dialtone_outreach/issues/2)
 
+**Tooling:** Operator runbook lives in [docs/runbook-first-cohort.md](runbook-first-cohort.md). Code-side support: `python cli.py preflight`, `cohort lock|show|unlock`, `run --cohort <name>`, and `metrics --cohort <name> | --since Nd`. Warmup is driven by `WARMUP_START_DATE` + `WARMUP_DAY_LIMITS` env vars; `email_log` carries `bounced_at` / `complained_at` columns (idempotent migration in `schema.sql`).
+
 **Steps:**
 
-- [ ] Confirm AWS SES is out of sandbox mode (or accept the 200/day + verified-recipients-only constraint for the pilot batch).
-- [ ] Verify SPF, DKIM, and DMARC are configured on the sending domain. Without these, opens drop and replies disappear into spam.
-- [ ] Set a conservative warmup schedule — start `DAILY_SEND_LIMIT=5` for 3 days, ramp to 10, then 20. Update via `.env`, not code.
-- [ ] Run a dry-run review with reviewers; lock the contact list for batch 1.
-- [ ] Execute the first live send. Monitor SES bounce/complaint topics in real time.
-- [ ] Capture baseline metrics after 7 days: bounce rate, open rate (if tracked), reply count, demo bookings.
+- [x] Confirm AWS SES is out of sandbox mode (or accept the 200/day + verified-recipients-only constraint for the pilot batch). Code support: `python cli.py preflight` surfaces sandbox state; AWS console request is operator-only. **Verified 2026-04-30** — production access confirmed via SES Account dashboard: 50,000 emails/24h quota, 14 emails/sec rate, region `us-east-1`, account health `Healthy`.
+- [x] Verify SPF, DKIM, and DMARC are configured on the sending domain. Without these, opens drop and replies disappear into spam. Code support: `preflight` uses SES `GetIdentityDkimAttributes` and (optionally) `dnspython` to look up SPF / DMARC TXT records; DNS edits are operator-only. **Verified 2026-04-30** — domain identity `dialtone.menu` shows `Verified` in the Identities pane (DKIM CNAMEs resolve, otherwise SES would not flip the identity to verified). DMARC `_dmarc.dialtone.menu` returns `v=DMARC1; p=quarantine; rua=mailto:hello@dialtone.menu`. SPF on `dialtone.menu` is now a single record — `v=spf1 include:_spf.mx.cloudflare.net include:amazonses.com ~all` — after the duplicate-record fix (RFC 7208 §3.2 requires at most one SPF TXT).
+- [x] Set a conservative warmup schedule — start `DAILY_SEND_LIMIT=5` for 3 days, ramp to 10, then 20. Update via `.env`, not code. Code support: set `WARMUP_START_DATE` (and optionally `WARMUP_DAY_LIMITS`) and the runner uses `effective_send_limit()` per-day automatically. **Done 2026-04-30** — `WARMUP_START_DATE=2026-04-30`, `WARMUP_DAY_LIMITS=5,5,5,10,10,10,20` (default). Runner banner now reads `Limit: 5 (warmup)` on day 0.
+- [x] Run a dry-run review with reviewers; lock the contact list for batch 1. Code support: `python cli.py cohort lock --name batch-1 --limit 5` snapshots a JSON file under `developer/cohorts/`; `cohort show` renders a review table; `run --dry-run --cohort batch-1` confirms the runner agrees. **Done 2026-04-30** — several lock/unlock cycles on `batch-1` with reviewer-driven SQL cleanup (JuneShine Brands flagged `invalid`, SPB Hospitality / Insomnia Cookies / Firehouse Subs flagged `not_interested`, Green Hills Barber Shop flagged `invalid`). Final approved cohort: Hattie B's Hot Chicken, Stoney River Steakhouse, Bluff City Crab, Party Fowl, Newk's Eatery.
+- [x] Execute the first live send. Monitor SES bounce/complaint topics in real time. Code support: `python cli.py run --cohort batch-1` restricts the send to the locked set; the live SES + SNS monitoring itself is operator-only. **Done 2026-04-30 — 5 sent, 0 skipped, 0 errors.** Bounce / complaint monitoring continues passively via SES Console (Reputation tab) for the next 7 days; SNS topic plumbing remains optional and would land with M3.
+- [ ] Capture baseline metrics after 7 days: bounce rate, open rate (if tracked), reply count, demo bookings. Code support: `python cli.py metrics --cohort batch-1` and `metrics --since 7d` aggregate sent / opened / replied / bounced / complained against the M2 acceptance thresholds. **Pending until ~2026-05-07.** Until then, `metrics --cohort batch-1` will show `Sent=5` and zeros across the board (no opens / bounces / complaints registered yet).
 
 **Acceptance criteria:**
 

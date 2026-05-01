@@ -3,6 +3,8 @@ runner.py — Orchestrates the daily outreach run.
 """
 from __future__ import annotations
 from datetime import datetime, timezone
+from typing import Optional
+
 from rich.console import Console
 from rich.table import Table
 from rich import box
@@ -10,39 +12,75 @@ from outreach import db, sequence, email_client
 from outreach.templates import render_email
 from outreach.config import (
     DAILY_SEND_LIMIT, SEQUENCE_STATUS_MAP, FROM_EMAIL,
+    WARMUP_START_DATE, effective_send_limit,
 )
 
 console = Console()
 
 
-def run(dry_run: bool = False, limit: int = None) -> dict:
-    """
-    Main entry point for the daily outreach run.
+def run(
+    dry_run: bool = False,
+    limit: Optional[int] = None,
+    cohort: Optional[str] = None,
+) -> dict:
+    """Main entry point for the daily outreach run.
 
-    dry_run: preview what would send without actually sending
-    limit:   override DAILY_SEND_LIMIT for this run
+    Args:
+        dry_run: Preview what would send without actually sending.
+        limit: Manual override for the day's send budget. Bypasses both
+            the warmup ramp and ``DAILY_SEND_LIMIT``.
+        cohort: Optional locked-cohort name. When set, the runner only
+            considers contacts whose ID is in the cohort and respects the
+            cohort's order. See ``python cli.py cohort lock``.
+
+    Returns:
+        Dict with ``sent`` / ``skipped`` / ``errors`` counts and a
+        ``details`` list of per-contact rows.
     """
     client     = db.get_client()
-    send_limit = limit or DAILY_SEND_LIMIT
+
+    if limit is not None:
+        send_limit = limit
+        limit_source = "override"
+    elif WARMUP_START_DATE:
+        send_limit = effective_send_limit()
+        limit_source = "warmup"
+    else:
+        send_limit = DAILY_SEND_LIMIT
+        limit_source = "DAILY_SEND_LIMIT"
+
     sent_today = db.get_emails_sent_today(client)
     remaining  = max(0, send_limit - sent_today)
 
+    cohort_label = f"  Cohort: [bold]{cohort}[/bold]" if cohort else ""
     console.print(
         f"\n[bold blue]DialTone Outreach Runner[/bold blue]  "
         f"{'[yellow]DRY RUN[/yellow]' if dry_run else '[green]LIVE[/green]'}\n"
         f"Already sent today: [bold]{sent_today}[/bold]  "
-        f"Limit: [bold]{send_limit}[/bold]  "
-        f"Remaining budget: [bold]{remaining}[/bold]\n"
+        f"Limit: [bold]{send_limit}[/bold] [dim]({limit_source})[/dim]  "
+        f"Remaining budget: [bold]{remaining}[/bold]{cohort_label}\n"
     )
+
+    if send_limit == 0 and limit_source == "warmup":
+        console.print(
+            "[yellow]Warmup hasn't started yet (WARMUP_START_DATE is in "
+            "the future). Nothing to do.[/yellow]"
+        )
+        return {"sent": 0, "skipped": 0, "errors": 0}
 
     if remaining == 0:
         console.print("[yellow]Daily send limit reached. Nothing to do.[/yellow]")
         return {"sent": 0, "skipped": 0, "errors": 0}
 
-    due = sequence.get_contacts_due(client, limit=remaining)
+    due = _resolve_due(client, remaining=remaining, cohort=cohort)
 
     if not due:
-        console.print("[yellow]No contacts are due for outreach today.[/yellow]")
+        message = (
+            "[yellow]No contacts are due for outreach today.[/yellow]"
+            if not cohort
+            else f"[yellow]Cohort {cohort!r} has no remaining due contacts.[/yellow]"
+        )
+        console.print(message)
         return {"sent": 0, "skipped": 0, "errors": 0}
 
     console.print(f"[bold]{len(due)}[/bold] contact(s) due for outreach.\n")
@@ -125,6 +163,41 @@ def run(dry_run: bool = False, limit: int = None) -> dict:
 
     _print_summary(results, dry_run)
     return results
+
+
+def _resolve_due(client, *, remaining: int, cohort: Optional[str]) -> list[dict]:
+    """Return the contacts the runner should attempt to email.
+
+    Args:
+        client: Supabase client.
+        remaining: Daily send budget remaining after subtracting today's
+            already-sent emails.
+        cohort: Optional cohort name.
+
+    Returns:
+        Ordered list of contact rows. When ``cohort`` is set, the result
+        is intersected with ``sequence.get_contacts_due`` so members that
+        have since become terminal (replied, bounced) are skipped.
+    """
+    if not cohort:
+        return sequence.get_contacts_due(client, limit=remaining)
+
+    from outreach.cohort import load_cohort
+
+    snapshot = load_cohort(cohort)
+    # Pull current state for every contact in the cohort, in cohort order.
+    due_now = {
+        contact["id"]: contact
+        for contact in sequence.get_contacts_due(client, limit=10_000)
+    }
+    ordered: list[dict] = []
+    for contact_id in snapshot.contact_ids:
+        contact = due_now.get(contact_id)
+        if contact:
+            ordered.append(contact)
+        if len(ordered) >= remaining:
+            break
+    return ordered
 
 
 def _print_summary(results: dict, dry_run: bool) -> None:

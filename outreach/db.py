@@ -68,6 +68,58 @@ def mark_contact_replied(client: Client, contact_id: str) -> None:
     }).eq("id", contact_id).execute()
 
 
+def unsubscribe_contact(
+    client: Client,
+    contact_id: str,
+    *,
+    note: Optional[str] = None,
+) -> dict:
+    """Mark a contact as unsubscribed (CAN-SPAM honor obligation).
+
+    Sets ``status`` to :attr:`Status.NOT_INTERESTED` (a terminal status
+    that ``contacts_due_for_outreach`` already excludes) and appends an
+    ``Unsubscribed YYYY-MM-DD`` line to the contact's ``notes`` field so
+    prior context (lead notes, demo prep) is preserved.
+
+    Args:
+        client: Supabase client.
+        contact_id: UUID of the row to update.
+        note: Optional free-form note appended after the standard
+            ``Unsubscribed`` audit line (e.g. the source of the request).
+
+    Returns:
+        The updated contact row, or ``{}`` if Supabase returned no data.
+    """
+    today = datetime.now(timezone.utc).date().isoformat()
+    audit_line = f"Unsubscribed {today}"
+    if note:
+        audit_line = f"{audit_line} — {note}"
+
+    existing = (
+        client.table("contacts")
+        .select("notes")
+        .eq("id", contact_id)
+        .single()
+        .execute()
+    ).data or {}
+    prior_notes = (existing.get("notes") or "").strip()
+    merged_notes = (
+        f"{prior_notes}\n{audit_line}".strip() if prior_notes else audit_line
+    )
+
+    result = (
+        client.table("contacts")
+        .update({
+            "status": Status.NOT_INTERESTED,
+            "notes": merged_notes,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        })
+        .eq("id", contact_id)
+        .execute()
+    )
+    return (result.data or [{}])[0]
+
+
 def get_all_contacts(client: Client) -> list[dict]:
     result = client.table("contacts").select("*").order("created_at", desc=True).execute()
     return result.data or []
@@ -124,6 +176,80 @@ def mark_email_replied(client: Client, log_id: str) -> None:
     client.table("email_log").update({
         "replied_at": datetime.now(timezone.utc).isoformat()
     }).eq("id", log_id).execute()
+
+
+def mark_email_bounced(
+    client: Client,
+    log_id: str,
+    bounce_type: Optional[str] = None,
+) -> None:
+    """Record a bounce notification for a previously-sent email.
+
+    Args:
+        client: Supabase client.
+        log_id: ``email_log.id`` of the bounced message.
+        bounce_type: Optional SES bounce classification
+            (``"Permanent"``, ``"Transient"``, etc.).
+    """
+    payload = {"bounced_at": datetime.now(timezone.utc).isoformat()}
+    if bounce_type:
+        payload["bounce_type"] = bounce_type
+    client.table("email_log").update(payload).eq("id", log_id).execute()
+
+
+def mark_email_complained(
+    client: Client,
+    log_id: str,
+    complaint_type: Optional[str] = None,
+) -> None:
+    """Record a SES complaint notification for a sent email.
+
+    Args:
+        client: Supabase client.
+        log_id: ``email_log.id`` of the complained-about message.
+        complaint_type: Optional SES complaint feedback type (e.g.
+            ``"abuse"``, ``"fraud"``, ``"other"``).
+    """
+    payload = {"complained_at": datetime.now(timezone.utc).isoformat()}
+    if complaint_type:
+        payload["complaint_type"] = complaint_type
+    client.table("email_log").update(payload).eq("id", log_id).execute()
+
+
+def get_email_log_metrics(
+    client: Client,
+    *,
+    since_iso: Optional[str] = None,
+    contact_ids: Optional[list[str]] = None,
+) -> dict:
+    """Aggregate email-log counters for a time window or cohort.
+
+    Args:
+        client: Supabase client.
+        since_iso: ISO-8601 timestamp; only messages sent at or after this
+            instant are counted. ``None`` means all-time.
+        contact_ids: Optional list of ``contacts.id`` values to restrict
+            the aggregation to (used by the ``cohort metrics`` flow).
+
+    Returns:
+        A dict with the keys ``sent``, ``opened``, ``replied``,
+        ``bounced``, and ``complained``.
+    """
+    query = client.table("email_log").select(
+        "id, sent_at, opened_at, replied_at, bounced_at, complained_at"
+    )
+    if since_iso:
+        query = query.gte("sent_at", since_iso)
+    if contact_ids:
+        query = query.in_("contact_id", contact_ids)
+    rows = query.execute().data or []
+    return {
+        "sent":       len(rows),
+        "opened":     sum(1 for r in rows if r.get("opened_at")),
+        "replied":    sum(1 for r in rows if r.get("replied_at")),
+        "bounced":    sum(1 for r in rows if r.get("bounced_at")),
+        "complained": sum(1 for r in rows if r.get("complained_at")),
+    }
 
 
 def get_email_log_for_contact(client: Client, contact_id: str) -> list[dict]:

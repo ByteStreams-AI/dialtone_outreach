@@ -22,6 +22,97 @@
 
 ## Journal Entries
 
+### 2026-04-30 — Feature — First Live Cohort Sent (`batch-1`, 5 contacts)
+
+**Phase:** Milestone 2 step 5 — first live send. Warmup day 0.
+
+**Files Changed:** None (operational). Database state changed: 5 contacts moved `new` → `emailed_1`; 5 corresponding rows inserted into `email_log` with non-null `message_id`s.
+
+**Summary:** First production cold-email cohort shipped through SES. Sequence executed by `python cli.py run --cohort batch-1` against a locked, reviewer-approved contact set. SES quota: 50,000/24h (production access), warmup limit: 5/day on day 0. Send result: `Sent: 5, Skipped: 0, Errors: 0`. No SES-side errors at the API layer; bounce / complaint signals come back asynchronously over the next 24–72h via the SES Console reputation tab (SNS topic wiring is optional and may land with M3).
+
+**Final cohort (`developer/cohorts/batch-1.json`, gitignored):**
+
+1. Hattie B's Hot Chicken — `joem@hattieb.com` — Nashville, TN.
+2. Stoney River Steakhouse and Grill — `cboyd@stoneyriver.com` — Nashville, TN. (Regional ~11-location group; user-approved as borderline.)
+3. Bluff City Crab — `jason@bluffcitycrab.com` — Memphis, TN.
+4. Party Fowl — `chris@partyfowl.com` — Nashville, TN.
+5. Newk's Eatery — `mduncan@newks.com` — Jackson. (Regional ~110-location group; user-approved as borderline.)
+
+**Reviewer cleanup that landed during cohort iteration:**
+
+Marked terminal in `contacts` (so they never re-enter the cohort pool):
+
+- `greenhillsbarbershop.com` — `invalid` (not a restaurant).
+- `insomniacookies.com` — `not_interested` (national chain).
+- `firehouse subs` — `not_interested` (caught by chain regex, ~1,200 locations).
+- `juneshine.co` — `invalid` (beverage brand, not a restaurant). Required updating by `owner_email` ILIKE because the stored `domain` was `.com`, not `.co`.
+- `spbhospitality.com` — `not_interested` (multi-brand operator, owns Stoney River et al).
+- A regex sweep over `restaurant_name` for `(barber\|salon\|spa\|clinic\|...)` and a separate sweep for `(brands\|hospitality group\|holdings\|management\|group$\|enterprises)` to catch the long tail of non-restaurants and holding/management entities.
+
+**Notes:**
+
+- The cohort lock was iterated several times because Apollo's "Industry: Restaurants" filter is leaky — about 40% of the top picks were either non-restaurants (kombucha brand, barber shop) or large national chains (Firehouse, Insomnia). Worth a future M5-side hardening: lift `is_chain()` and a non-restaurant keyword filter into Apollo's branch of `passes_quality_filter`. Until then, periodic SQL sweeps before each cohort lock are the operator workflow.
+- The `domain` mismatch on JuneShine (Apollo CSV had `juneshine.com` website + `forrest@juneshine.co` email; importer stored `juneshine.com` as the domain) is a one-off but worth remembering: when targeting a contact for cleanup, use `owner_email` rather than `domain` to avoid this class of miss.
+- M2 step 6 (7-day metrics review) opens automatically: `python cli.py metrics --cohort batch-1` will be the gate. Acceptance thresholds: bounce < 5%, complaint < 0.1%, ≥1 real reply.
+- Sender identity used: `hello@dialtone.menu` (verified email-address identity, also covered by the verified `dialtone.menu` domain identity for DKIM).
+- Tomorrow (warmup day 1): another 5-email cohort. The runner will skip the 5 contacts in `emailed_1` until day-3 of their personal sequence; the cohort pool is still ~266 active `new` contacts.
+
+---
+
+### 2026-04-30 — Bug Fix — Apollo Import Rejected Every Row (`# Employees` schema-cache error)
+
+**Phase:** Milestone 2 step 4 (cohort lock prep). First live import attempt against the populated Supabase schema produced 0 imported, 107 skipped, **271 errors** — every Apollo row failed.
+
+**Files Changed:**
+
+- `scripts/import_contacts.py` — added `CONTACT_COLUMNS` allowlist (frozenset of every column that exists on the `contacts` table per `schema.sql`); the upsert loop now filters each record dict through that allowlist before calling `upsert_contact()`.
+- `AGENTS.md` — added a "Contact column allowlist" bullet to the coding-conventions section so future schema changes also touch `CONTACT_COLUMNS`.
+- `developer/developer-journal.md` — this entry.
+
+**Summary:** Apollo CSVs ship with columns the `contacts` table doesn't have (`# Employees`, `Industry`, `Annual Revenue`, `Stage`, `Lists`, `Person Linkedin Url`, etc.). The original importer built the upsert payload from `row.to_dict().items()` directly, which forwarded every Apollo column to PostgREST. Supabase rejected each row with `Could not find the '<X>' column of 'contacts' in the schema cache`. The fix is a single allowlist filter applied just before the upsert; columns not in `CONTACT_COLUMNS` are silently dropped, which is exactly what the importer wants to do with metadata fields like `# Employees`.
+
+**Notes:**
+
+- After the fix, the expected import outcome on the sample CSV is roughly: ~271 imported, ~107 skipped (the PII-clean filter for `email status != valid` or empty `owner_email`), 0 errors.
+- `CONTACT_COLUMNS` is now an invariant: schema migrations must add to it, schema removals must remove from it. Documented in `AGENTS.md` so future agents catch this.
+- The 107 skipped rows are deliberate — see `passes_quality_filter()` in the same file. Skipping `email status ≠ valid` rows is a Milestone 1 deliverability decision, not a regression.
+- Generic in scope: any future Apollo export with new columns Apollo decides to ship will be tolerated automatically because the allowlist is anchored to the schema, not the CSV.
+
+---
+
+### 2026-04-30 — Feature — Milestone 2 Tooling (First Live Cohort)
+
+**Phase:** Repo-side implementation of Milestone 2 (`First Live Cohort`). Operator-only steps (SES sandbox exit, DNS, executing the live send, 7-day wait) remain pending and are documented in the new runbook.
+
+**Files Changed:**
+
+- `outreach/config.py` — new `WARMUP_START_DATE` and `WARMUP_DAY_LIMITS` env vars, plus `effective_send_limit(today=None)` that maps a date to the right cap.
+- `outreach/preflight.py` (new) — Rich-table go/no-go report covering env, Supabase connectivity, SES quota / sandbox / sender identity / DKIM, and SPF / DMARC TXT records (uses `dnspython` if installed, otherwise yields ``skip`` rows).
+- `outreach/cohort.py` (new) — JSON-backed cohort lock under `developer/cohorts/<slug>.json`. `lock_cohort`, `load_cohort`, `unlock_cohort`, `list_cohorts`, plus a `Cohort` dataclass with the contact_ids and a per-contact preview row.
+- `outreach/metrics.py` (new) — `MetricsReport` dataclass + `report_window` / `report_cohort`. Renders bounce / complaint / reply / open / demo counts and grades them against the M2 acceptance thresholds (bounce <5%, complaint <0.1%, ≥1 reply).
+- `outreach/db.py` — `mark_email_bounced`, `mark_email_complained`, and `get_email_log_metrics(since_iso, contact_ids)` aggregator.
+- `outreach/runner.py` — reads from `effective_send_limit()` when `WARMUP_START_DATE` is set; new `--cohort` argument restricts the send to a locked cohort and respects cohort order; banner shows the limit source (`override` / `warmup` / `DAILY_SEND_LIMIT`).
+- `cli.py` — new `preflight`, `cohort lock|show|unlock`, and `metrics` commands; existing `run` gains `--cohort`. `--cohort` and `--since` on `metrics` are mutually exclusive.
+- `schema.sql` — idempotent migration adds `bounced_at`, `bounce_type`, `complained_at`, `complaint_type` columns plus matching indexes on `email_log`. Re-running the script is safe.
+- `.env.example` — documents `WARMUP_START_DATE` and `WARMUP_DAY_LIMITS=5,5,5,10,10,10,20`.
+- `.gitignore` — ignores `developer/cohorts/` (recipient PII).
+- `README.md` — new "First Live Cohort (Milestone 2)" quick-reference section, env-var table extended, structure tree updated.
+- `AGENTS.md` — CLI cheatsheet expanded; repo layout + runbook reference added.
+- `docs/runbook-first-cohort.md` (new) — 8-step operator runbook for SES sandbox exit, DNS, warmup configuration, cohort lock + review, dry-run, live send, and 7-day metrics review.
+- `docs/project-status.md` — each Milestone 2 step now annotates which CLI command provides code support and which parts remain operator-only.
+
+**Summary:** Milestone 2 is mostly operational, but the repo previously had nothing to drive the operational work safely. This change lands the four pieces of repo-side tooling that enable a careful first cohort: (1) a `preflight` go/no-go gate, (2) a warmup-aware `run` so reviewers don't have to hand-edit `DAILY_SEND_LIMIT` between days, (3) JSON cohort locks so reviewers can sign off on a frozen contact list, and (4) a `metrics` command that grades the result against the published M2 thresholds. None of this performs the operator-only work itself — SES production-access, DNS edits, the live send, and the 7-day wait still happen outside the codebase per `docs/runbook-first-cohort.md`.
+
+**Notes:**
+
+- `dnspython` is treated as optional. If it isn't installed, `preflight` returns `skip` rows for SPF / DMARC and tells the operator to fall back to `dig`. This avoids forcing a new hard dependency on every environment that doesn't run the M2 flow.
+- Cohort artifacts contain owner emails, which is why `developer/cohorts/` is gitignored. The `cohort show` table truncates subjects to 60 chars to keep the review surface narrow but readable.
+- The `email_log` migration is idempotent (`alter table ... add column if not exists`). The user must re-run `schema.sql` against Supabase before the bounce / complaint columns become available; until then `metrics` will report zeroes for those counters.
+- `metrics --cohort` and `metrics --since` are mutually exclusive by design — cohort metrics are scope-by-recipient (any time), time-window metrics are scope-by-send-time. Mixing them would be ambiguous.
+- No tests yet (formal harness is M6); next-best smoke check is `python -c "import outreach, scripts"` plus `python scripts/preview_templates.py`. With a populated `.env`, `python cli.py preflight` and `python cli.py metrics --since 1d` exercise the new modules end to end.
+
+---
+
 ### 2026-04-30 — Infrastructure — Address Milestone 1 Code Review Must-Fix Items
 
 **Phase:** Pre-merge cleanup of `chore/email-gen-hardening` (PR #7), in response to the code-review entry below.

@@ -6,13 +6,22 @@ Usage:
     python cli.py import --source outscraper --file export.csv
     python cli.py import --source apollo     --file export.csv
     python cli.py merge
-    python cli.py run --dry-run
+    python cli.py run --dry-run [--cohort batch-1]
     python cli.py run
     python cli.py status
     python cli.py stats
+    python cli.py preflight
+    python cli.py cohort lock --name batch-1 --limit 5
+    python cli.py cohort show [--name batch-1]
+    python cli.py cohort unlock --name batch-1
+    python cli.py metrics --since 7d
+    python cli.py metrics --cohort batch-1
     python cli.py contact --email owner@restaurant.com
+    python cli.py unsubscribe --email owner@restaurant.com
     python cli.py send-test --to verified@inbox.com
 """
+import sys
+
 import click
 from rich.console import Console
 from rich.table import Table
@@ -59,16 +68,18 @@ def merge(dry_run):
     mc.main(standalone_mode=False, args=["--dry-run"] if dry_run else [])
 
 
-# ── run ───────────────────────────────────────────────────────────
+# ── run ──────────────────────────────────────────────────
 @cli.command("run")
 @click.option("--dry-run", is_flag=True, default=False,
               help="Preview what would send without actually sending")
 @click.option("--limit",   default=None, type=int,
               help="Override daily send limit for this run")
-def run(dry_run, limit):
+@click.option("--cohort",  default=None,
+              help="Restrict the send to a locked cohort by name")
+def run(dry_run, limit, cohort):
     """Send today's outreach emails."""
     from outreach.runner import run as _run
-    _run(dry_run=dry_run, limit=limit)
+    _run(dry_run=dry_run, limit=limit, cohort=cohort)
 
 
 # ── status ────────────────────────────────────────────────────────
@@ -168,7 +179,202 @@ def contact(email, domain):
     console.print()
 
 
-# ── send-test ───────────────────────────────────────────────────────
+# ── preflight ──────────────────────────────────────────────────
+@cli.command("preflight")
+def preflight():
+    """Run the go/no-go pre-send checks (env, Supabase, SES, DNS)."""
+    from outreach.preflight import run_preflight
+    sys.exit(run_preflight())
+
+
+# ── cohort ──────────────────────────────────────────────────
+@cli.group("cohort")
+def cohort_group():
+    """Lock, inspect, and unlock cohorts for the live send."""
+
+
+@cohort_group.command("lock")
+@click.option("--name",  required=True, help="Cohort identifier (slugified)")
+@click.option("--limit", required=True, type=int,
+              help="Number of contacts to freeze into the cohort")
+def cohort_lock(name, limit):
+    """Snapshot the next N due contacts into a locked cohort."""
+    from outreach.cohort import lock_cohort
+    try:
+        cohort = lock_cohort(name=name, limit=limit)
+    except FileExistsError as exc:
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(1)
+    console.print(
+        f"[green]\u2713[/green] Locked cohort [cyan]{cohort.name}[/cyan] "
+        f"with [bold]{len(cohort.contact_ids)}[/bold] contact(s) at "
+        f"[dim]{cohort.path}[/dim]\n"
+    )
+    _render_cohort_table(cohort)
+
+
+@cohort_group.command("show")
+@click.option("--name", default=None,
+              help="Cohort name; if omitted, list every locked cohort")
+def cohort_show(name):
+    """Print a cohort's preview rows, or list all locked cohorts."""
+    from outreach.cohort import list_cohorts, load_cohort
+
+    if name:
+        try:
+            cohort = load_cohort(name)
+        except FileNotFoundError as exc:
+            console.print(f"[red]{exc}[/red]")
+            sys.exit(1)
+        _render_cohort_table(cohort)
+        return
+
+    cohorts = list_cohorts()
+    if not cohorts:
+        console.print("[yellow]No locked cohorts.[/yellow]")
+        return
+    table = Table(title="Locked Cohorts", box=box.SIMPLE)
+    table.add_column("Name",        style="cyan")
+    table.add_column("Created",     style="dim")
+    table.add_column("Contacts",    justify="right")
+    table.add_column("Limit",       justify="right")
+    for cohort in cohorts:
+        table.add_row(
+            cohort.name,
+            cohort.created_at,
+            str(len(cohort.contact_ids)),
+            str(cohort.limit),
+        )
+    console.print(table)
+
+
+@cohort_group.command("unlock")
+@click.option("--name", required=True, help="Cohort identifier to remove")
+def cohort_unlock(name):
+    """Delete a locked cohort file."""
+    from outreach.cohort import unlock_cohort
+    path = unlock_cohort(name)
+    if path:
+        console.print(f"[green]\u2713[/green] Removed [dim]{path}[/dim]")
+    else:
+        console.print(f"[yellow]No cohort named {name!r}[/yellow]")
+
+
+def _render_cohort_table(cohort) -> None:
+    """Render a Rich table of a cohort's preview rows for review."""
+    table = Table(
+        title=f"Cohort: {cohort.name}  (created {cohort.created_at})",
+        box=box.SIMPLE,
+    )
+    table.add_column("#",          style="dim", justify="right")
+    table.add_column("Restaurant", style="cyan")
+    table.add_column("City",       style="white")
+    table.add_column("Owner",      style="white")
+    table.add_column("Seq",        justify="right")
+    table.add_column("Score",      justify="right")
+    table.add_column("Subject",    style="white")
+    for idx, row in enumerate(cohort.preview, start=1):
+        table.add_row(
+            str(idx),
+            row.get("restaurant_name") or "—",
+            row.get("city") or "—",
+            row.get("owner_email") or "—",
+            str(row.get("seq") or "—"),
+            str(row.get("lead_score") or "—"),
+            (row.get("subject") or "—")[:60],
+        )
+    console.print(table)
+
+
+# ── metrics ────────────────────────────────────────────────
+@cli.command("metrics")
+@click.option("--since",  default=None,
+              help="Time window like '7d', '24h', '30m'")
+@click.option("--cohort", default=None,
+              help="Restrict to contacts in a locked cohort")
+def metrics(since, cohort):
+    """Report bounce/complaint/reply/demo metrics for the live cohort."""
+    from outreach.metrics import print_report, report_cohort, report_window
+
+    if cohort and since:
+        console.print("[red]--cohort and --since are mutually exclusive.[/red]")
+        sys.exit(2)
+    if cohort:
+        try:
+            report = report_cohort(cohort)
+        except FileNotFoundError as exc:
+            console.print(f"[red]{exc}[/red]")
+            sys.exit(1)
+    else:
+        try:
+            report = report_window(since or "7d")
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/red]")
+            sys.exit(2)
+    print_report(report)
+
+
+# ── unsubscribe ─────────────────────────────────────────────────
+@cli.command("unsubscribe")
+@click.option("--email", required=True,
+              help="Owner email of the contact to unsubscribe")
+@click.option("--note",  default=None,
+              help="Optional free-form note (e.g. 'mailto reply 2026-05-02')")
+@click.option("--yes",   is_flag=True, default=False,
+              help="Skip the confirmation prompt")
+def unsubscribe(email, note, yes):
+    """Honor an unsubscribe request — mark the contact as not_interested.
+
+    Looks the contact up by ``owner_email``, prints a summary, and (after
+    confirmation) flips their status to ``not_interested`` so the runner
+    skips them on every subsequent send. The audit line is appended to
+    ``contacts.notes`` so any prior context is preserved.
+    """
+    from outreach.db import get_client, unsubscribe_contact
+
+    client = get_client()
+    result = (
+        client.table("contacts")
+        .select("*")
+        .eq("owner_email", email)
+        .execute()
+    )
+    rows = result.data or []
+    if not rows:
+        console.print(f"[yellow]No contact found with owner_email={email!r}[/yellow]")
+        sys.exit(1)
+    if len(rows) > 1:
+        console.print(
+            f"[red]Ambiguous: {len(rows)} contacts share owner_email={email!r}. "
+            "Resolve manually in Supabase before unsubscribing.[/red]"
+        )
+        sys.exit(2)
+
+    c = rows[0]
+    console.print(
+        f"\n[bold]Unsubscribe[/bold]\n"
+        f"  Restaurant: [cyan]{c.get('restaurant_name','—')}[/cyan]\n"
+        f"  Owner:      {c.get('owner_first','')} {c.get('owner_last','')}  "
+        f"[dim]{c.get('owner_email','—')}[/dim]\n"
+        f"  Status:     [bold]{c.get('status','—')}[/bold] → [yellow]not_interested[/yellow]\n"
+    )
+
+    if not yes:
+        click.confirm(
+            "Apply unsubscribe? This is a CAN-SPAM honor action and is "
+            "effectively irreversible without manual Supabase edits.",
+            abort=True,
+            default=False,
+        )
+
+    updated = unsubscribe_contact(client, c["id"], note=note)
+    console.print(
+        f"  [green]✓[/green] {email} marked not_interested.  "
+        f"Notes:\n[dim]{updated.get('notes','—')}[/dim]\n"
+    )
+
+
+# ── send-test ─────────────────────────────────────────────────
 @cli.command("send-test")
 @click.option("--to", "to_email", required=True,
               help="Verified SES recipient inbox")
