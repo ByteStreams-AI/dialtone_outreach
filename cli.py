@@ -3,9 +3,8 @@
 cli.py — DialTone Outreach CLI
 
 Usage:
-    python cli.py import --source outscraper --file export.csv
-    python cli.py import --source apollo     --file export.csv
-    python cli.py merge
+    python cli.py import --file export.csv               # defaults to apollo
+    python cli.py import --source manual --file canonical.csv
     python cli.py run --dry-run [--cohort batch-1]
     python cli.py run
     python cli.py status
@@ -40,34 +39,18 @@ def cli():
 
 # ── import ────────────────────────────────────────────────────────
 @cli.command("import")
-@click.option("--source", required=True,
-              type=click.Choice(["outscraper", "apollo"], case_sensitive=False))
+@click.option("--source", default="apollo", show_default=True,
+              type=click.Choice(["apollo", "manual"], case_sensitive=False),
+              help="CSV source. 'manual' expects canonical-schema columns.")
 @click.option("--file",   required=True, type=click.Path(exists=True))
 @click.option("--dry-run", is_flag=True, default=False)
 def import_contacts(source, file, dry_run):
-    """Import contacts from an Outscraper or Apollo CSV export."""
-    from scripts.import_contacts import main as _import
-    from click.testing import CliRunner
-    # Pass args directly to the import script
-    import sys, os
-    sys.argv = ["import_contacts.py",
-                "--source", source,
-                "--file", file,
-                *(["--dry-run"] if dry_run else [])]
+    """Import contacts from a CSV export."""
     from scripts import import_contacts as ic
     ic.main(standalone_mode=False, args=[
         "--source", source, "--file", file,
         *(["--dry-run"] if dry_run else [])
     ])
-
-
-# ── merge ─────────────────────────────────────────────────────────
-@cli.command("merge")
-@click.option("--dry-run", is_flag=True, default=False)
-def merge(dry_run):
-    """Domain-match Outscraper restaurants with Apollo owner contacts."""
-    from scripts import merge_contacts as mc
-    mc.main(standalone_mode=False, args=["--dry-run"] if dry_run else [])
 
 
 # ── run ──────────────────────────────────────────────────

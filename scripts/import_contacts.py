@@ -1,11 +1,16 @@
 """
 scripts/import_contacts.py
 --------------------------
-Import contacts from Outscraper or Apollo CSV exports into Supabase.
+Import contacts from a CSV export into Supabase.
+
+The importer is source-agnostic: it normalises the incoming columns into a
+canonical schema (see ``REQUIRED_FIELDS`` / ``CONTACT_COLUMNS``) and then
+upserts each row keyed on ``domain``. Source-specific column-name mappings
+live in ``SOURCE_MAPS`` — add a new entry there to support a new vendor.
 
 Usage:
-    python scripts/import_contacts.py --source outscraper --file export.csv
-    python scripts/import_contacts.py --source apollo     --file export.csv
+    python scripts/import_contacts.py --source apollo --file export.csv
+    python scripts/import_contacts.py --source manual --file canonical.csv
 """
 from __future__ import annotations
 import sys, os
@@ -20,13 +25,18 @@ from outreach.templates import clean_company_name
 
 console = Console()
 
-# ── Column mappings ───────────────────────────────────────────────
+# ── Canonical input contract ──────────────────────────────────────
 
-# Columns that exist on the ``contacts`` table in ``schema.sql``. Apollo
-# CSVs ship with extra fields (``# Employees``, ``Industry``, ``Annual
-# Revenue``, etc.); the upsert loop below filters every record through
-# this set so PostgREST doesn't reject the row with
-# "Could not find the '<X>' column of 'contacts' in the schema cache."
+# Hard requirements: every imported row must populate these fields. Rows
+# missing either are skipped with a clear reason.
+REQUIRED_FIELDS: frozenset[str] = frozenset({"domain", "owner_email"})
+
+# All columns that exist on the ``contacts`` table in ``schema.sql``. The
+# upsert loop filters every record through this set so vendor-specific
+# extras (Apollo's ``# Employees``, ``Industry``, ``Annual Revenue``, etc.)
+# are dropped before PostgREST sees them. Keep this aligned with
+# ``schema.sql`` — adding a column there without adding it here means the
+# value will be silently dropped during import.
 CONTACT_COLUMNS: frozenset[str] = frozenset({
     "restaurant_name",
     "business_phone",
@@ -37,9 +47,6 @@ CONTACT_COLUMNS: frozenset[str] = frozenset({
     "city",
     "state",
     "zip",
-    "rating",
-    "reviews",
-    "category",
     "owner_first",
     "owner_last",
     "owner_email",
@@ -51,20 +58,7 @@ CONTACT_COLUMNS: frozenset[str] = frozenset({
     "source",
 })
 
-
-OUTSCRAPER_MAP = {
-    "name":          "restaurant_name",
-    "phone":         "business_phone",
-    "site":          "website",
-    "email":         "restaurant_email",
-    "rating":        "rating",
-    "reviews":       "reviews",
-    "category":      "category",
-    "full_address":  "address",
-    "city":          "city",
-    "state":         "state",
-    "postal_code":   "zip",
-}
+# ── Source-specific column mappings ───────────────────────────────
 
 # Apollo CSV columns are lower-cased before mapping. We deliberately
 # prefer the *company* address fields over the contact's personal
@@ -84,12 +78,16 @@ APOLLO_MAP = {
     "company address":   "address",
 }
 
-KNOWN_CHAINS = [
-    "mcdonald","subway","chick-fil","wendy","burger king","starbucks",
-    "chipotle","applebee","chili's","olive garden","ihop","denny",
-    "waffle house","taco bell","pizza hut","domino","kfc","popeyes",
-    "panera","cracker barrel","sonic","dairy queen","little caesars",
-]
+# A "manual" source already speaks the canonical schema — no rename needed.
+MANUAL_MAP: dict[str, str] = {}
+
+SOURCE_MAPS: dict[str, dict[str, str]] = {
+    "apollo": APOLLO_MAP,
+    "manual": MANUAL_MAP,
+}
+
+
+# ── Helpers ───────────────────────────────────────────────────────
 
 
 def extract_domain(value: str) -> str:
@@ -101,45 +99,18 @@ def extract_domain(value: str) -> str:
     return v.split("/")[0].strip()
 
 
-def is_chain(name: str) -> bool:
-    if not name:
-        return False
-    n = name.lower()
-    return any(chain in n for chain in KNOWN_CHAINS)
-
-
 def passes_quality_filter(row: pd.Series, source: str) -> tuple[bool, str]:
-    """Returns (passes, reason_if_not)."""
-    if source == "outscraper":
-        rating  = row.get("rating")
-        reviews = row.get("reviews")
-        name    = row.get("restaurant_name", "")
+    """Source-specific deliverability checks layered on top of the contract.
 
-        try:
-            rating = float(rating)
-        except (TypeError, ValueError):
-            return False, "invalid rating"
-
-        try:
-            reviews = int(reviews)
-        except (TypeError, ValueError):
-            return False, "invalid review count"
-
-        if not (3.5 <= rating <= 4.5):
-            return False, f"rating {rating} out of range"
-        if not (50 <= reviews <= 800):
-            return False, f"review count {reviews} out of range"
-        if is_chain(name):
-            return False, "chain restaurant"
-
+    Returns:
+        ``(passes, reason)`` — when ``passes`` is False, ``reason`` carries
+        a one-line explanation suitable for an operator log line.
+    """
     if source == "apollo":
-        email = row.get("owner_email", "")
-        if not email or pd.isna(email):
-            return False, "no email"
         # Apollo provides an "email status" column populated by
         # ZeroBounce / their own verifier. Only allow rows that came
         # back "valid" — anything else (catch-all, risky, etc.) is a
-        # deliverability liability for the first live cohort.
+        # deliverability liability.
         email_status = (row.get("email status") or "").strip().lower()
         if email_status and email_status != "valid":
             return False, f"email status={email_status}"
@@ -147,34 +118,25 @@ def passes_quality_filter(row: pd.Series, source: str) -> tuple[bool, str]:
     return True, ""
 
 
-def process_outscraper(df: pd.DataFrame) -> pd.DataFrame:
-    df.columns = [c.lower().strip() for c in df.columns]
-    df = df.rename(columns={k: v for k, v in OUTSCRAPER_MAP.items() if k in df.columns})
-    df["domain"] = df.get("website", pd.Series(dtype=str)).apply(extract_domain)
-    df["source"] = "outscraper"
-    df["status"] = "new"
-    return df
-
-
-def process_apollo(df: pd.DataFrame) -> pd.DataFrame:
-    """Normalize an Apollo CSV export into the contacts schema.
-
-    Lower-cases the headers, renames Apollo's columns to our internal
-    field names, derives ``domain`` from the website (or email), cleans
-    the company name, and tags each row with ``source = 'apollo'`` /
-    ``status = 'new'``.
+def process(df: pd.DataFrame, source: str) -> pd.DataFrame:
+    """Normalize a CSV export into the canonical contacts schema.
 
     Args:
-        df: Raw Apollo export loaded with ``pd.read_csv``.
+        df: Raw CSV loaded with ``pd.read_csv``.
+        source: Source key matching a ``SOURCE_MAPS`` entry.
 
     Returns:
         A normalized DataFrame ready for the upsert loop.
     """
+    column_map = SOURCE_MAPS[source]
+
     df.columns = [c.lower().strip() for c in df.columns]
-    df = df.rename(columns={k: v for k, v in APOLLO_MAP.items() if k in df.columns})
+    if column_map:
+        df = df.rename(columns={k: v for k, v in column_map.items() if k in df.columns})
+
     df["domain"] = df.get("website", pd.Series(dtype=str)).apply(extract_domain)
 
-    # Also try deriving domain from email if website missing
+    # Fall back to deriving domain from email when website is missing.
     mask = df["domain"] == ""
     if "owner_email" in df.columns:
         df.loc[mask, "domain"] = df.loc[mask, "owner_email"].apply(
@@ -188,15 +150,23 @@ def process_apollo(df: pd.DataFrame) -> pd.DataFrame:
             lambda v: clean_company_name(v) if pd.notna(v) else v
         )
 
-    df["source"] = "apollo"
+    df["source"] = source
     df["status"] = "new"
     return df
 
 
+def _missing_required(record: dict) -> list[str]:
+    """Return the list of required fields absent from ``record``."""
+    return [
+        f for f in REQUIRED_FIELDS
+        if not record.get(f) or str(record[f]).strip() == ""
+    ]
+
+
 @click.command()
-@click.option("--source", required=True,
-              type=click.Choice(["outscraper", "apollo"], case_sensitive=False),
-              help="Source of the CSV file")
+@click.option("--source", default="apollo", show_default=True,
+              type=click.Choice(sorted(SOURCE_MAPS.keys()), case_sensitive=False),
+              help="Source of the CSV file. Use 'manual' for canonical-schema CSVs.")
 @click.option("--file",   required=True,
               type=click.Path(exists=True), help="Path to CSV file")
 @click.option("--dry-run", is_flag=True, default=False,
@@ -209,10 +179,7 @@ def main(source, file, dry_run):
     df = pd.read_csv(file, dtype=str, low_memory=False)
     console.print(f"Loaded [bold]{len(df)}[/bold] rows from CSV.\n")
 
-    if source == "outscraper":
-        df = process_outscraper(df)
-    else:
-        df = process_apollo(df)
+    df = process(df, source)
 
     # Deduplicate within this file by domain
     df = df.drop_duplicates(subset=["domain"], keep="first")
@@ -224,17 +191,16 @@ def main(source, file, dry_run):
 
     for _, row in track(df.iterrows(), total=len(df), description="Importing..."):
         # Filter the record to columns that actually exist on the
-        # ``contacts`` table; otherwise Apollo's extra columns (e.g.
-        # ``# Employees``, ``Industry``) would be sent to PostgREST
-        # and rejected with a schema-cache error.
+        # ``contacts`` table; otherwise vendor-specific extras would be
+        # sent to PostgREST and rejected with a schema-cache error.
         record = {
             k: (None if pd.isna(v) else v)
             for k, v in row.to_dict().items()
             if k in CONTACT_COLUMNS
         }
 
-        # Skip rows with no domain
-        if not record.get("domain"):
+        missing = _missing_required(record)
+        if missing:
             skipped += 1
             continue
 
