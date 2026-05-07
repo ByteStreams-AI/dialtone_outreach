@@ -14,9 +14,14 @@ SUPABASE_URL         = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 
 # ── AWS SES ───────────────────────────────────────────────────────
-AWS_ACCESS_KEY_ID     = os.environ["AWS_ACCESS_KEY_ID"]
-AWS_SECRET_ACCESS_KEY = os.environ["AWS_SECRET_ACCESS_KEY"]
-AWS_REGION            = os.getenv("AWS_REGION", "us-east-1")
+# Credentials are resolved by boto3's default credential chain — env vars
+# (``AWS_ACCESS_KEY_ID`` + ``AWS_SECRET_ACCESS_KEY`` and, for temporary
+# creds, ``AWS_SESSION_TOKEN``), ``~/.aws/credentials`` profiles, or the
+# IAM role on Lambda. We don't read them here because the choice of
+# source belongs to the runtime, and asserting them at import time would
+# break local devs using AWS_PROFILE. Preflight's SES checks are the real
+# gate that auth works.
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 
 # ── Sender ────────────────────────────────────────────────────────
 FROM_EMAIL = os.environ["FROM_EMAIL"]

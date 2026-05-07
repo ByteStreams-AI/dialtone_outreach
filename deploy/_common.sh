@@ -26,6 +26,23 @@ fi
 : "${AWS_REGION:?AWS_REGION must be set in deploy/config.env}"
 : "${AWS_ACCOUNT_ID:?AWS_ACCOUNT_ID must be set in deploy/config.env}"
 
+# Reject the placeholder values from config.env.example. Both have hit
+# silently in practice — the AWS_ACCOUNT_ID one points docker push at
+# someone else's account (403 from ECR), and the ALERT_EMAIL one
+# subscribes a non-existent address so the SES bounce/complaint alarms
+# never reach a human. Better to fail with a clear message than to
+# pretend everything succeeded.
+if [[ "${AWS_ACCOUNT_ID}" == "123456789012" ]]; then
+  echo "✗ AWS_ACCOUNT_ID is still the placeholder (123456789012)." >&2
+  echo "  Set it to your real account: aws sts get-caller-identity --query Account --output text" >&2
+  exit 1
+fi
+if [[ "${ALERT_EMAIL:-}" == "ops@example.com" ]]; then
+  echo "✗ ALERT_EMAIL is still the placeholder (ops@example.com)." >&2
+  echo "  Set it to a real email in deploy/config.env before running setup_alarms.sh." >&2
+  exit 1
+fi
+
 export AWS_PAGER=""    # Disable the interactive less pager in CI/non-TTY use.
 
 log()  { printf "→ %s\n" "$*"; }
