@@ -60,7 +60,8 @@ try:
 except ImportError:
     sys.stderr.write(
         "✗ python-dotenv is not installed in the resolved Python.\n"
-        "  Run ``uv sync`` (or ``pip install python-dotenv``) and retry.\n"
+        "  Run ``uv pip install -r requirements.txt`` "
+        "(or ``pip install python-dotenv``) and retry.\n"
     )
     sys.exit(1)
 

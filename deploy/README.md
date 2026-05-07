@@ -26,9 +26,10 @@ Lambda → CloudWatch (Errors)           │           │
 - A Python with `python-dotenv` installed. `create_lambda.sh` resolves
   Python in priority order: `uv run` (if `uv` is on PATH and a
   `pyproject.toml` exists, no venv activation needed) →
-  `${REPO_ROOT}/.venv/bin/python` → system `python3`. `uv sync` once at
-  repo root is the simplest setup since `python-dotenv` is in
-  `requirements.txt`.
+  `${REPO_ROOT}/.venv/bin/python` → system `python3`. Run
+  `uv pip install -r requirements.txt` once at repo root —
+  `python-dotenv` lives in `requirements.txt`, not `pyproject.toml`,
+  so `uv sync` alone would leave it missing.
 - The repo's runtime `.env` populated (Supabase URL/key, AWS SES keys,
   `FROM_EMAIL`, `BUSINESS_ADDRESS`, IMAP creds, etc.). `create_lambda.sh`
   forwards every `KEY=VALUE` from `.env` as a Lambda env var, parsed by

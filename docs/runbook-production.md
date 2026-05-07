@@ -103,6 +103,7 @@ scheduled cadence (e.g. a manual A/B test, or a re-warm after a pause).
 
 ```bash
 python cli.py preflight                                 # gate: must exit 0
+python cli.py cohort show                               # show cohort name
 python cli.py cohort lock --name batch-N --limit 25
 python cli.py cohort show  --name batch-N               # inspect before sending
 python cli.py run --cohort batch-N --dry-run            # final preview
