@@ -1,6 +1,6 @@
 ---
 title: DialTone Outreach — Project Status
-last_updated: 2026-04-30
+last_updated: 2026-05-06
 ---
 
 # DialTone Outreach — Project Status
@@ -9,7 +9,7 @@ last_updated: 2026-04-30
 Cold email sequencer for restaurant owner outreach. Stack is AWS SES + Supabase + Click/Rich CLI, with a planned local FastAPI + Jinja2 + HTMX UI for non-technical reviewers.
 **Current state:** Sequence engine, contact import (Apollo), and CLI dashboard are functional. Repo migrated to `ByteStreams-AI/dialtone_outreach` (private). Milestone 1 (email-generation hardening) merged via PR #7. **First live cohort sent on 2026-04-30** (`batch-1`, 5 contacts, 0 send-time errors). Milestone 2 is now waiting on the 7-day metrics review (bounce / complaint / reply rates against the M2 thresholds). Reviewers still cannot self-serve outcomes — that gap is what motivates the web UI milestone.
 **Active scope decisions:**
-- Apollo is the only contact source. Outscraper paths and the merge step are out of scope.
+- Imports flow through a canonical input contract (`scripts/import_contacts.py::REQUIRED_FIELDS`); each source has its own column-name mapping in `outreach/sources.py::SOURCE_MAPS`. Apollo is the primary source today; `manual` accepts canonical-schema CSVs from any other origin.
 - Sending stays in the CLI. The web UI is read + status-edit only.
 - Secrets are managed by the user on `ByteStreams-AI` (Cloudflare and others to be added).
 
@@ -126,25 +126,37 @@ Each milestone below has a corresponding GitHub issue on `ByteStreams-AI/dialton
 
 ---
 
-### Milestone 5 — Apollo-Only Code Cleanup
+### Milestone 5 — Source-Agnostic Import + Dead-Code Cleanup
 
-- [ ] **Milestone complete**
+- [x] **Milestone complete**
 
-**Goal:** Remove dead Outscraper and merge code paths so the codebase reflects the actual workflow.
+**Goal:** Replace the Apollo-vs-Outscraper branching with a canonical
+input contract any source must satisfy, and remove the dead Outscraper
+and merge code paths so the codebase reflects the actual workflow.
 
 **Issue:** [#5](https://github.com/ByteStreams-AI/dialtone_outreach/issues/5)
 
+**Input contract** (any source must populate these — see
+`scripts/import_contacts.py::REQUIRED_FIELDS`):
+
+- **Required:** `domain`, `owner_email`
+- **Used for personalization (with fallbacks):** `restaurant_name`,
+  `owner_first`, `city`
+- **Display / operational state:** `owner_last`, `title`, `owner_phone`,
+  `business_phone`, `website`, `restaurant_email`, `address`, `state`,
+  `zip`, `lead_score`, `notes`, `source`
+
 **Steps:**
 
-- [ ] Remove `--source` choice from `cli.py import` (default to apollo, drop outscraper option).
-- [ ] Delete `cli.py merge` command and `scripts/merge_contacts.py`.
-- [ ] Remove Outscraper branches from `scripts/import_contacts.py` (`OUTSCRAPER_MAP`, `process_outscraper`, `KNOWN_CHAINS`, the rating/review filter).
-- [ ] Decide what to do with the unused `restaurant_name`, `rating`, `reviews`, `category` columns in `schema.sql` — keep as nullable (cheap), or drop in a migration.
-- [ ] Remove any remaining Outscraper references from documentation.
+- [x] Default `cli.py import` to `--source apollo`; drop the `outscraper` choice; add `manual` for canonical-schema CSVs.
+- [x] Delete `cli.py merge` command and `scripts/merge_contacts.py`.
+- [x] Remove Outscraper branches from `scripts/import_contacts.py` (`OUTSCRAPER_MAP`, `process_outscraper`, `KNOWN_CHAINS`, `is_chain`, the rating/review filter). Replaced with `SOURCE_MAPS` registry + `REQUIRED_FIELDS` validation that runs regardless of source.
+- [x] Drop unused `rating`, `reviews`, `category` columns in `schema.sql` via an idempotent `alter table ... drop column if exists` migration. Operator must run this in the Supabase SQL editor against existing databases.
+- [x] Refresh `AGENTS.md`: replaced the "Restoring Outscraper code paths" warning with a description of the input contract and `SOURCE_MAPS` extension point.
 
 **Acceptance criteria:**
 
-- `grep -i outscraper` returns no hits in code (docs may retain a single historical note).
+- `grep -i outscraper` returns no hits in code (this status doc retains the historical note).
 - `python cli.py --help` shows no `merge` command.
 
 ---

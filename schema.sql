@@ -4,24 +4,25 @@
 -- ================================================================
 
 -- ── contacts ─────────────────────────────────────────────────────
+-- Canonical input contract: importers (any source) must populate at
+-- minimum ``domain`` and ``owner_email``. ``restaurant_name``,
+-- ``owner_first``, and ``city`` drive template personalisation; everything
+-- else is optional display / operational state.
 create table if not exists contacts (
   id                uuid primary key default gen_random_uuid(),
 
-  -- Restaurant info (from Outscraper)
+  -- Restaurant info
   restaurant_name   text,
   business_phone    text,
   website           text,
   restaurant_email  text,
-  domain            text unique not null,   -- PRIMARY KEY for dedup & merge
+  domain            text unique not null,   -- dedup / upsert key
   address           text,
   city              text,
   state             text,
   zip               text,
-  rating            numeric(3,1),
-  reviews           integer,
-  category          text,
 
-  -- Owner info (from Apollo, merged by domain)
+  -- Owner info
   owner_first       text,
   owner_last        text,
   owner_email       text,
@@ -32,7 +33,7 @@ create table if not exists contacts (
   status            text not null default 'new',
   lead_score        integer check (lead_score between 1 and 5),
   notes             text,
-  source            text,                   -- 'outscraper' | 'apollo' | 'manual'
+  source            text,                   -- 'apollo' | 'manual' | future sources
 
   created_at        timestamptz default now(),
   updated_at        timestamptz default now()
@@ -70,6 +71,15 @@ alter table email_log
 
 create index if not exists email_log_bounced_at_idx    on email_log (bounced_at);
 create index if not exists email_log_complained_at_idx on email_log (complained_at);
+
+-- ── Migration: drop unused legacy columns (Milestone 5) ─────────
+-- ``rating``, ``reviews``, and ``category`` were populated only by a
+-- retired import path. They are not part of the canonical input
+-- contract and nothing in the codebase reads them.
+alter table contacts
+  drop column if exists rating,
+  drop column if exists reviews,
+  drop column if exists category;
 
 -- ── View: contacts due for outreach ──────────────────────────────
 -- Used by sequence.py — returns active contacts with an email address

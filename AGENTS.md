@@ -66,7 +66,8 @@ web/
 ## CLI cheatsheet
 
 ```bash
-python cli.py import --source apollo --file apollo_export.csv [--dry-run]
+python cli.py import --file apollo_export.csv [--dry-run]
+python cli.py import --source manual --file canonical.csv
 python cli.py run [--dry-run] [--limit N]
 python cli.py status
 python cli.py stats
@@ -107,14 +108,20 @@ M2 live cohort flow (`preflight` → `cohort lock` → `run --cohort`
   `COMPANY_LEGAL_NAME`, sender identity, and a working unsubscribe link. The
   helpers in `outreach/templates.py` already do this — keep them as the only
   HTML/text wrappers.
+- **Input contract:** `scripts/import_contacts.py::REQUIRED_FIELDS` defines
+  the canonical minimum every imported row must satisfy regardless of
+  source (`domain`, `owner_email`). Source-specific column-name mappings
+  live in `outreach/sources.py::SOURCE_MAPS` — add a new entry there to
+  support a new vendor and both `cli.py` and the importer pick it up
+  automatically.
 - **Contact column allowlist:** `scripts/import_contacts.py::CONTACT_COLUMNS`
   mirrors the columns on the `contacts` table in `schema.sql`. The import
-  loop filters every CSV row through it so Apollo's extra columns
-  (`# Employees`, `Industry`, `Annual Revenue`, etc.) are dropped before the
-  upsert. **If you add a column to `schema.sql`, add it to `CONTACT_COLUMNS`
-  too** — otherwise it will be silently dropped during import. Conversely,
-  if you remove a column from the schema, remove it here so the upsert
-  doesn't try to write a non-existent field.
+  loop filters every CSV row through it so vendor-specific extras
+  (Apollo's `# Employees`, `Industry`, `Annual Revenue`, etc.) are dropped
+  before the upsert. **If you add a column to `schema.sql`, add it to
+  `CONTACT_COLUMNS` too** — otherwise it will be silently dropped during
+  import. Conversely, if you remove a column from the schema, remove it
+  here so the upsert doesn't try to write a non-existent field.
 
 ## Verification before handing work back
 
@@ -156,7 +163,6 @@ M2 live cohort flow (`preflight` → `cohort lock` → `run --cohort`
 
 - Sending real email from agent runs. Use `--dry-run` and the verified
   inbox in `send-test`.
-- Restoring Outscraper or merge code paths — milestone 5 is to delete them.
 - Adding new env vars without documenting them in both `.env.example` and
   the README's "Environment Variables Reference" table.
 - Editing `uv.lock` by hand. Regenerate with `uv lock` after touching

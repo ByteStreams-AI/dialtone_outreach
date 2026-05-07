@@ -2,7 +2,7 @@
 
 Cold email sequencer for restaurant owner outreach. Built on AWS SES + Supabase.
 
-Imports owner contacts from Apollo and runs a 5-email sequence with automatic timing logic — pausing the moment anyone replies. Includes a local web UI for non-technical reviewers to monitor outreach and update contact statuses.
+Imports owner contacts from a CSV (Apollo today; any source matching the canonical input contract) and runs a 5-email sequence with automatic timing logic — pausing the moment anyone replies. Includes a local web UI for non-technical reviewers to monitor outreach and update contact statuses.
 
 ---
 
@@ -14,7 +14,7 @@ Imports owner contacts from Apollo and runs a 5-email sequence with automatic ti
 | Database | Supabase (PostgreSQL) |
 | CLI | Click + Rich |
 | Web UI (local) | FastAPI + Jinja2 + HTMX |
-| Contact source | Apollo (restaurant owner contacts) |
+| Contact source | Apollo CSV (primary); any source matching the canonical input contract |
 
 ---
 
@@ -38,13 +38,13 @@ dialtone-outreach/
 │   ├── templates.py            # All 5 email templates (Jinja2) + CAN-SPAM helpers
 │   └── runner.py               # Orchestration loop + terminal dashboard
 ├── scripts/
-│   ├── import_contacts.py      # Apollo CSV importer
+│   ├── import_contacts.py      # CSV importer (Apollo + canonical 'manual' source)
 │   └── preview_templates.py    # Render all 5 templates against real Apollo rows
 ├── developer/
 │   ├── developer-journal.md    # Running engineering log
 │   ├── cohorts/                # Locked cohorts (gitignored, recipient PII)
 │   └── template-previews/      # Generated previews (gitignored — regenerate with preview_templates.py)
-└── web/                        # Local FastAPI UI for non-technical reviewers (planned, milestone 4)
+└── web/                        # Local FastAPI UI for non-technical reviewers
     ├── app.py                  # FastAPI application + routes
     ├── templates/              # Jinja2 page templates (HTMX-driven)
     └── static/                 # CSS + minimal JS
@@ -138,12 +138,25 @@ Check your inbox and click the verification link.
 
 ### Step 2 — Import
 
+Apollo is the default source — `--source` can be omitted for Apollo CSVs:
+
 ```bash
-python cli.py import --source apollo --file apollo_export.csv
+python cli.py import --file apollo_export.csv
 
 # Preview without writing
-python cli.py import --source apollo --file apollo_export.csv --dry-run
+python cli.py import --file apollo_export.csv --dry-run
+
+# CSVs that already match the canonical schema (column names like
+# `domain`, `owner_email`, `restaurant_name`, ...) use --source manual:
+python cli.py import --source manual --file canonical.csv
 ```
+
+Required fields per row, regardless of source: `domain` and `owner_email`.
+Rows missing either are skipped. Personalization fields (`restaurant_name`,
+`owner_first`, `city`) are optional but recommended — see
+`scripts/import_contacts.py::REQUIRED_FIELDS` for the full input contract,
+and `outreach/sources.py::SOURCE_MAPS` for the column-name mapping each
+source uses.
 
 ### Step 3 — Preview today's run
 
@@ -342,8 +355,8 @@ Every email rendered by `outreach/templates.py` includes:
 - A working unsubscribe link
 - Sender identity in the signature and footer
 
-Until milestone 3 ships automated reply detection, unsubscribes are
-handled manually:
+Unsubscribes are handled manually until a URL-based unsubscribe endpoint
+is wired up (see `UNSUBSCRIBE_URL` below):
 
 1. Recipients click the `mailto:` link in the footer (or send `unsubscribe`
    as a reply).
