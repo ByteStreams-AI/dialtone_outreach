@@ -32,7 +32,17 @@ log = logging.getLogger("dialtone.lambda")
 def handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]:
     """Lambda entrypoint. Returns a JSON-serialisable summary dict."""
     event = event or {}
-    task = event.get("task", "run")
+    task = event.get("task")
+    if not task:
+        # No default — an empty {} payload (the AWS console's default
+        # test event, or an `aws lambda invoke` without --payload) must
+        # not kick off a production send. Every legitimate caller —
+        # both EventBridge rules in deploy/setup_schedule.sh and the
+        # smoke-test commands in deploy/README.md — sets this explicitly.
+        raise ValueError(
+            "event.task is required. Pass one of "
+            '{"task":"run"} / {"task":"check-replies"} / {"task":"preflight"}.'
+        )
     request_id = getattr(context, "aws_request_id", "local")
 
     log.info("start task=%s request_id=%s event=%s", task, request_id, json.dumps(event))
