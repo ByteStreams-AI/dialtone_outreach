@@ -1,6 +1,8 @@
 # Sourced by every deploy/*.sh script. Loads ``deploy/config.env`` and
-# pre-flights the bare-minimum prerequisites (aws CLI, jq) so failures
+# pre-flights the bare-minimum prerequisites (aws CLI) so failures
 # happen up-front with a clear message rather than mid-deploy.
+# ``create_lambda.sh`` additionally needs python-dotenv to parse
+# ``.env`` — checked there at the point of use.
 
 set -euo pipefail
 
@@ -16,12 +18,10 @@ fi
 # shellcheck disable=SC1090
 source "${CONFIG_FILE}"
 
-for cmd in aws jq; do
-  if ! command -v "${cmd}" >/dev/null 2>&1; then
-    echo "✗ Required command '${cmd}' not on PATH." >&2
-    exit 1
-  fi
-done
+if ! command -v aws >/dev/null 2>&1; then
+  echo "✗ Required command 'aws' not on PATH." >&2
+  exit 1
+fi
 
 : "${AWS_REGION:?AWS_REGION must be set in deploy/config.env}"
 : "${AWS_ACCOUNT_ID:?AWS_ACCOUNT_ID must be set in deploy/config.env}"

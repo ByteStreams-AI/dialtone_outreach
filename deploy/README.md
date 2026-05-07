@@ -21,11 +21,16 @@ Lambda → CloudWatch (Errors)           │           │
   alarms. The deploy scripts use the credentials of whichever profile
   `aws` finds (`AWS_PROFILE`, `~/.aws/credentials`, env vars, or
   instance role — any AWS auth source works).
-- `aws` CLI v2 and `jq` on `PATH`.
+- `aws` CLI v2 on `PATH`.
 - Docker daemon running locally.
+- A Python with `python-dotenv` installed — the project venv satisfies
+  this (`python-dotenv` is in `requirements.txt`). `create_lambda.sh`
+  prefers `${REPO_ROOT}/.venv/bin/python` and falls back to `python3`.
 - The repo's runtime `.env` populated (Supabase URL/key, AWS SES keys,
   `FROM_EMAIL`, `BUSINESS_ADDRESS`, IMAP creds, etc.). `create_lambda.sh`
-  forwards every `KEY=VALUE` from `.env` as a Lambda env var.
+  forwards every `KEY=VALUE` from `.env` as a Lambda env var, parsed by
+  the same `python-dotenv` the CLI uses — so single/double quoting and
+  `\n` escapes match local behavior exactly.
 - The sender domain verified in SES with DKIM enabled. Confirm with
   `python cli.py preflight` *before* deploying.
 
@@ -74,6 +79,14 @@ SES quota, and DNS records without touching the contact pipeline. A
 successful invocation returns `{"task":"preflight","exit_code":0,...}`
 and the run shows up in CloudWatch Logs at
 `/aws/lambda/dialtone-outreach`.
+
+> **`task` is required.** Invoking the function with the AWS console's
+> default empty `{}` test payload, or `aws lambda invoke` without
+> `--payload`, returns a `ValueError`. This is intentional — it
+> prevents an accidental click in the console from kicking off a real
+> send. Always pass one of `{"task":"preflight"}`,
+> `{"task":"run","dry_run":true}`, `{"task":"run"}`, or
+> `{"task":"check-replies"}`.
 
 To rehearse an actual run:
 
