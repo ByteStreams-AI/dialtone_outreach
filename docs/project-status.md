@@ -163,7 +163,7 @@ and merge code paths so the codebase reflects the actual workflow.
 
 ### Milestone 6 — Production Operations
 
-- [ ] **Milestone complete** (code-side landed; awaits the user-side AWS deploy + GitHub branch-protection toggle)
+- [x] **Milestone complete**
 
 **Goal:** Daily runs are scheduled and observable. New repo has CI/CD wired up.
 
@@ -177,9 +177,9 @@ and merge code paths so the codebase reflects the actual workflow.
 - [x] Author the Lambda runtime: [lambda_handler.py](../lambda_handler.py), [Dockerfile](../Dockerfile) (built on `public.ecr.aws/lambda/python:3.12`), and a [.dockerignore](../.dockerignore) that strips tests/docs/CSV exports from the image.
 - [x] Provision scripts under [deploy/](../deploy/) — IAM role, ECR push, Lambda create/update, EventBridge schedules, SES bounce/complaint + Lambda-error alarms via SNS. Each script is idempotent and reads `deploy/config.env`.
 - [x] Document the deploy + branch-protection workflow in [deploy/README.md](../deploy/README.md).
-- [ ] **(User)** Run the deploy scripts against the production AWS account.
-- [ ] **(User)** Configure branch protection on `main` — require the `ci` workflow to pass before merge. Steps in [deploy/README.md#branch-protection](../deploy/README.md#branch-protection).
-- [ ] **(User)** Confirm the `ALERT_EMAIL` SNS subscription and verify the daily run + reply-check schedules fire end-to-end.
+- [x] **(User)** Run the deploy scripts against the production AWS account.
+- [x] **(User)** Configure branch protection on `main` — require the `ci` workflow to pass before merge. Steps in [deploy/README.md#branch-protection](../deploy/README.md#branch-protection).
+- [x] **(User)** Confirm the `ALERT_EMAIL` SNS subscription and verify the daily run + reply-check schedules fire end-to-end.
 
 **Acceptance criteria:**
 

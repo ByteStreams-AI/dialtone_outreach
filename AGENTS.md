@@ -124,7 +124,9 @@ Two scheduled rules drive it: the daily `run` (weekdays at 9am Central
 by default) and a `check-replies` poll. CloudWatch alarms on
 `AWS/SES::Reputation.BounceRate`, `AWS/SES::Reputation.ComplaintRate`,
 and `AWS/Lambda::Errors` fan out through SNS to `ALERT_EMAIL`. The
-deploy runbook lives at [deploy/README.md](deploy/README.md).
+initial deploy runbook lives at [deploy/README.md](deploy/README.md);
+day-to-day operations (daily checklist, alarm response, manual
+invocations) live at [docs/runbook-production.md](docs/runbook-production.md).
 
 When you add a feature that needs to run on the schedule, route it
 through `lambda_handler._dispatch` rather than building a parallel
