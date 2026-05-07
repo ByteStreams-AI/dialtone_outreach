@@ -21,24 +21,47 @@ REPO_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
 IMAGE_URI="${REPO_URI}:${IMAGE_TAG}"
 ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/${LAMBDA_ROLE_NAME}"
 
-# Build the JSON ``Variables`` map from the .env file (if any). Only
-# KEY=VALUE lines are forwarded; comments and blanks are dropped.
+# Build the JSON ``Variables`` map from the .env file (if any). Uses the
+# project's own ``python-dotenv`` so the Lambda environment matches the
+# CLI's runtime parser exactly:
+#   * single- and double-quoted values both have their quotes stripped
+#   * \n / \t escapes inside double-quoted values are interpreted (so
+#     multi-line values like BUSINESS_ADDRESS render correctly in the
+#     CAN-SPAM footer)
+#   * ``export`` prefixes and inline comments are handled by dotenv
+# Hand-rolled parsers diverged from this on every edge case in practice;
+# delegating to dotenv is the only way to keep them in lockstep.
 build_env_json() {
   if [[ ! -f "${ENV_FILE}" ]]; then
     echo '{"Variables":{}}'
     return
   fi
-  jq -Rsn '
-    {Variables:
-      ([inputs |
-        split("\n")[] |
-        select(length > 0) |
-        select(test("^\\s*#") | not) |
-        capture("^\\s*(?<k>[A-Za-z_][A-Za-z0-9_]*)=(?<v>.*)$") |
-        .v |= sub("^\"(?<x>.*)\"$"; .x) |
-        {(.k): .v}
-      ] | add // {})
-    }' < "${ENV_FILE}"
+
+  local python="python3"
+  if [[ -x "${REPO_ROOT}/.venv/bin/python" ]]; then
+    python="${REPO_ROOT}/.venv/bin/python"
+  fi
+
+  "${python}" - "${ENV_FILE}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+try:
+    from dotenv import dotenv_values
+except ImportError:
+    sys.stderr.write(
+        "✗ python-dotenv is not installed in the active Python.\n"
+        "  Activate the project venv (it's in requirements.txt) or run\n"
+        "    pip install python-dotenv\n"
+        "  before re-running this script.\n"
+    )
+    sys.exit(1)
+
+env_path = Path(sys.argv[1])
+values = {k: v for k, v in dotenv_values(env_path).items() if v is not None}
+print(json.dumps({"Variables": values}))
+PY
 }
 
 ENV_JSON=$(build_env_json)
