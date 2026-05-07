@@ -58,9 +58,44 @@ except ImportError:
     )
     sys.exit(1)
 
+# Lambda rejects ``CreateFunction`` / ``UpdateFunctionConfiguration``
+# if the env map contains any key the runtime reserves. AWS_ACCESS_KEY_ID,
+# AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN, and AWS_REGION are populated
+# automatically from the execution role + function region — boto3 picks
+# them up via the default credential chain, so SES / Supabase calls just
+# work without us forwarding the operator's local IAM-user keys.
+# Full list: https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars.html#configuration-envvars-runtime
+RESERVED = {
+    "_HANDLER",
+    "_X_AMZN_TRACE_ID",
+    "AWS_ACCESS_KEY",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_DEFAULT_REGION",
+    "AWS_EXECUTION_ENV",
+    "AWS_LAMBDA_FUNCTION_MEMORY_SIZE",
+    "AWS_LAMBDA_FUNCTION_NAME",
+    "AWS_LAMBDA_FUNCTION_VERSION",
+    "AWS_LAMBDA_INITIALIZATION_TYPE",
+    "AWS_LAMBDA_LOG_GROUP_NAME",
+    "AWS_LAMBDA_LOG_STREAM_NAME",
+    "AWS_LAMBDA_RUNTIME_API",
+    "AWS_REGION",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "LAMBDA_RUNTIME_DIR",
+    "LAMBDA_TASK_ROOT",
+    "TZ",
+}
+
 env_path = Path(sys.argv[1])
-values = {k: v for k, v in dotenv_values(env_path).items() if v is not None}
-print(json.dumps({"Variables": values}))
+parsed = {k: v for k, v in dotenv_values(env_path).items() if v is not None}
+filtered = {k: v for k, v in parsed.items() if k not in RESERVED}
+dropped = sorted(parsed.keys() - filtered.keys())
+if dropped:
+    sys.stderr.write(
+        f"  (dropped Lambda-reserved keys: {', '.join(dropped)})\n"
+    )
+print(json.dumps({"Variables": filtered}))
 PY
 }
 

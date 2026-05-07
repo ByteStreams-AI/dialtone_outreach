@@ -7,20 +7,19 @@ import boto3
 from botocore.exceptions import ClientError
 
 from outreach.config import (
-    AWS_ACCESS_KEY_ID,
     AWS_REGION,
-    AWS_SECRET_ACCESS_KEY,
     FROM_FULL,
 )
 
 
 def get_ses_client():
-    return boto3.client(
-        "ses",
-        region_name=AWS_REGION,
-        aws_access_key_id=AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-    )
+    # Let boto3's default credential chain pick up creds — env vars
+    # (``AWS_ACCESS_KEY_ID`` / ``AWS_SECRET_ACCESS_KEY`` / the
+    # ``AWS_SESSION_TOKEN`` Lambda injects with role credentials),
+    # then ``~/.aws/credentials``. Passing only the access-key pair
+    # explicitly drops the session token and breaks role-based auth on
+    # Lambda (InvalidClientTokenId).
+    return boto3.client("ses", region_name=AWS_REGION)
 
 
 def send_email(
