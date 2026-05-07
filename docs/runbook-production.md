@@ -90,7 +90,11 @@ sections below cover the response.
 
 ## CLI operations
 
-Run all commands from the repo root with the project venv active.
+Run all commands from the repo root. Every example below shows the
+bare `python cli.py …` form for readability — prefix with `uv run`
+(`uv run python cli.py status`) if you don't have the venv activated.
+`uv run` resolves to the project's venv automatically and never
+requires `source .venv/bin/activate`.
 
 ### Send a one-off cohort
 
@@ -178,8 +182,7 @@ The web UI is read-only-ish — reviewers can update statuses and add
 notes but cannot send email or import contacts. Start it locally:
 
 ```bash
-source .venv/bin/activate
-uvicorn web.app:app --reload --host 127.0.0.1 --port 8000
+uv run uvicorn web.app:app --reload --host 127.0.0.1 --port 8000
 # open http://127.0.0.1:8000
 ```
 

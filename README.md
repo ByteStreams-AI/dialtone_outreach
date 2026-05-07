@@ -61,20 +61,29 @@ git clone https://github.com/ByteStreams-AI/dialtone_outreach.git
 cd dialtone_outreach
 ```
 
-With [uv](https://docs.astral.sh/uv/) (preferred — matches the checked-in `uv.lock`):
+With [uv](https://docs.astral.sh/uv/) (preferred — matches the
+checked-in `uv.lock`). The runtime dependencies live in
+`requirements.txt` (which the production Lambda Dockerfile also
+installs from), so use `uv pip install -r` rather than `uv sync`:
 
 ```bash
 uv venv
-source .venv/bin/activate       # Windows: .venv\Scripts\activate
 uv pip install -r requirements.txt
+uv run python cli.py status                 # any CLI invocation
+uv run uvicorn web.app:app --port 8000      # web UI
 ```
 
-Or with stock `venv` + `pip`:
+`uv run` resolves to the project's `.venv` automatically — no
+`source .venv/bin/activate` required.
+
+Or with stock `venv` + `pip` (and the older "activate before every
+shell" workflow):
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate       # Windows: .venv\Scripts\activate
+source .venv/bin/activate                   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+python cli.py status
 ```
 
 ### 2. Configure environment
@@ -327,7 +336,7 @@ For a one-host cron alternative (left here for the local-dev case):
 
 ```bash
 # crontab -e
-0 8 * * 1-5 cd /path/to/dialtone_outreach && source .venv/bin/activate && python cli.py run >> logs/outreach.log 2>&1
+0 8 * * 1-5 cd /path/to/dialtone_outreach && uv run python cli.py run >> logs/outreach.log 2>&1
 ```
 
 ---
@@ -433,7 +442,7 @@ For local testing without AWS, a host cron works too:
 
 ```bash
 # crontab -e
-*/5 * * * * cd /path/to/dialtone_outreach && source .venv/bin/activate && python cli.py check-replies >> logs/reply-check.log 2>&1
+*/5 * * * * cd /path/to/dialtone_outreach && uv run python cli.py check-replies >> logs/reply-check.log 2>&1
 ```
 
 ---

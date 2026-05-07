@@ -65,13 +65,30 @@ tests/
 
 - Python 3.12+ (`pyproject.toml` pins `requires-python = ">=3.12.12"`).
 - Dependencies are pinned in `requirements.txt` and locked in `uv.lock`.
-- Preferred workflow uses [uv](https://docs.astral.sh/uv/):
+- Preferred workflow uses [uv](https://docs.astral.sh/uv/) without ever
+  activating a venv. `uv venv` + `uv pip install -r requirements.txt`
+  materialises a `.venv/`, then `uv run <cmd>` resolves to its Python
+  automatically — no `source .venv/bin/activate` needed:
 
   ```bash
-  uv venv
-  source .venv/bin/activate
-  uv pip install -r requirements.txt
+  uv venv                                       # one-time
+  uv pip install -r requirements.txt            # one-time + after dep bumps
+  uv pip install ruff pytest                    # dev tools (one-time)
+  uv run python cli.py status                   # any CLI invocation
+  uv run pytest tests/                          # tests
+  uv run ruff check .                           # lint
+  uv run uvicorn web.app:app --port 8000        # web UI
   ```
+
+  Activating the venv (`source .venv/bin/activate && python …`) still
+  works if you prefer it — the `uv run` commands above and an active
+  venv are interchangeable.
+
+  Note: `uv sync` is **not** the right primitive here. The runtime
+  dependency list lives in `requirements.txt` (which the Lambda
+  Dockerfile also installs from), not in `pyproject.toml`'s
+  `[project.dependencies]`, so `uv sync` would leave most of the
+  runtime deps uninstalled. Use `uv pip install -r requirements.txt`.
 
 - `.env` is required for anything that touches `outreach.config`. Use
   `.env.example` as a template; never commit a real `.env`.

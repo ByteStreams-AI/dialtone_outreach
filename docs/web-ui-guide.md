@@ -25,8 +25,7 @@ This is intentional. Keeping the send action in the CLI means you can't accident
 ## Starting the UI
 
 ```bash
-source .venv/bin/activate
-uvicorn web.app:app --reload --host 127.0.0.1 --port 8000
+uv run uvicorn web.app:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Then open **http://localhost:8000** in your browser.

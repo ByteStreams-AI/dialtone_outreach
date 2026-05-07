@@ -37,12 +37,20 @@ build_env_json() {
     return
   fi
 
-  local python="python3"
-  if [[ -x "${REPO_ROOT}/.venv/bin/python" ]]; then
-    python="${REPO_ROOT}/.venv/bin/python"
+  # Prefer ``uv run`` so the script picks up python-dotenv from the
+  # project's lockfile-managed env without anyone having to activate
+  # .venv first. Fall back to a path-based .venv lookup, then to the
+  # system python3 — useful for CI / minimal environments.
+  local runner=()
+  if command -v uv >/dev/null 2>&1 && [[ -f "${REPO_ROOT}/pyproject.toml" ]]; then
+    runner=(uv run --project "${REPO_ROOT}" --no-sync python -)
+  elif [[ -x "${REPO_ROOT}/.venv/bin/python" ]]; then
+    runner=("${REPO_ROOT}/.venv/bin/python" -)
+  else
+    runner=(python3 -)
   fi
 
-  "${python}" - "${ENV_FILE}" <<'PY'
+  "${runner[@]}" "${ENV_FILE}" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -51,10 +59,8 @@ try:
     from dotenv import dotenv_values
 except ImportError:
     sys.stderr.write(
-        "✗ python-dotenv is not installed in the active Python.\n"
-        "  Activate the project venv (it's in requirements.txt) or run\n"
-        "    pip install python-dotenv\n"
-        "  before re-running this script.\n"
+        "✗ python-dotenv is not installed in the resolved Python.\n"
+        "  Run ``uv sync`` (or ``pip install python-dotenv``) and retry.\n"
     )
     sys.exit(1)
 

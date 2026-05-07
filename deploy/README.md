@@ -23,16 +23,19 @@ Lambda → CloudWatch (Errors)           │           │
   instance role — any AWS auth source works).
 - `aws` CLI v2 on `PATH`.
 - Docker daemon running locally.
-- A Python with `python-dotenv` installed — the project venv satisfies
-  this (`python-dotenv` is in `requirements.txt`). `create_lambda.sh`
-  prefers `${REPO_ROOT}/.venv/bin/python` and falls back to `python3`.
+- A Python with `python-dotenv` installed. `create_lambda.sh` resolves
+  Python in priority order: `uv run` (if `uv` is on PATH and a
+  `pyproject.toml` exists, no venv activation needed) →
+  `${REPO_ROOT}/.venv/bin/python` → system `python3`. `uv sync` once at
+  repo root is the simplest setup since `python-dotenv` is in
+  `requirements.txt`.
 - The repo's runtime `.env` populated (Supabase URL/key, AWS SES keys,
   `FROM_EMAIL`, `BUSINESS_ADDRESS`, IMAP creds, etc.). `create_lambda.sh`
   forwards every `KEY=VALUE` from `.env` as a Lambda env var, parsed by
   the same `python-dotenv` the CLI uses — so single/double quoting and
   `\n` escapes match local behavior exactly.
 - The sender domain verified in SES with DKIM enabled. Confirm with
-  `python cli.py preflight` *before* deploying.
+  `uv run python cli.py preflight` *before* deploying.
 
 ## One-time setup
 
