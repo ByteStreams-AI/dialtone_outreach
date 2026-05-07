@@ -21,7 +21,6 @@ from rich.table import Table
 from supabase import Client
 
 from outreach import db
-from outreach.config import Status
 
 console = Console()
 

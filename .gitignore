@@ -3,6 +3,7 @@
 .env
 .env.*
 !.env.example
+deploy/config.env
 
 # ── Python bytecode / caches ─────────────────────────────────────
 __pycache__/

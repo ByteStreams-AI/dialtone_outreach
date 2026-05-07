@@ -33,7 +33,6 @@ from outreach.config import (
     UNSUBSCRIBE_URL,
 )
 
-
 # ── Helpers ───────────────────────────────────────────────────────
 
 

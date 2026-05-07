@@ -44,6 +44,21 @@ web/
   app.py                     FastAPI app + routes (local viewer, no send)
   templates/                 Jinja2 page templates (HTMX-driven)
   static/                    CSS (Pico CSS overrides)
+lambda_handler.py            AWS Lambda entrypoint (dispatches by event payload)
+Dockerfile                   Lambda container image (Python 3.12 base)
+deploy/                      Idempotent shell scripts for the AWS deploy
+  config.env.example         Template for deploy/config.env (gitignored)
+  build_and_push.sh          Build image + push to ECR
+  create_iam_role.sh         Lambda execution role + SES inline policy
+  create_lambda.sh           Create or update the Lambda function
+  setup_schedule.sh          EventBridge rules → Lambda
+  setup_alarms.sh            SNS topic + CloudWatch alarms (SES + Lambda)
+  README.md                  Deploy + branch-protection runbook
+.github/workflows/
+  ci.yml                     ruff lint + pytest smoke tests on push / PR
+tests/
+  conftest.py                Sets dummy env vars before importing outreach
+  test_smoke.py              Imports every module to catch broken refs
 ```
 
 ## Environment
@@ -92,6 +107,29 @@ M2 live cohort flow (`preflight` → `cohort lock` → `run --cohort`
 → `metrics`) is documented in `docs/runbook-first-cohort.md`; cohorts under
 `developer/cohorts/` are gitignored because they contain recipient PII.
 
+## Production runtime (M6)
+
+In production the same code runs inside an AWS Lambda container image
+on an EventBridge schedule. The entry point is
+[lambda_handler.py](lambda_handler.py), which dispatches based on the
+event payload's `task` field:
+
+```python
+{"task": "run"}            → outreach.runner.run(dry_run=False)
+{"task": "check-replies"}  → outreach.reply_checker.check_replies()
+{"task": "preflight"}      → outreach.preflight.run_preflight()
+```
+
+Two scheduled rules drive it: the daily `run` (weekdays at 9am Central
+by default) and a `check-replies` poll. CloudWatch alarms on
+`AWS/SES::Reputation.BounceRate`, `AWS/SES::Reputation.ComplaintRate`,
+and `AWS/Lambda::Errors` fan out through SNS to `ALERT_EMAIL`. The
+deploy runbook lives at [deploy/README.md](deploy/README.md).
+
+When you add a feature that needs to run on the schedule, route it
+through `lambda_handler._dispatch` rather than building a parallel
+entry point — keeps the deploy surface to one image and one function.
+
 ## Coding conventions
 
 - **Docstrings:** Google style on every public class and function. Match the
@@ -129,14 +167,25 @@ M2 live cohort flow (`preflight` → `cohort lock` → `run --cohort`
    touching `outreach/runner.py`, `outreach/sequence.py`, or
    `outreach/db.py`.
 2. Run `python scripts/preview_templates.py` whenever you change
-   `outreach/templates.py` or `scripts/import_contacts.py::process_apollo`.
+   `outreach/templates.py` or `scripts/import_contacts.py::process`.
    The script exits non-zero if any rendered file still contains a
    `{{ ... }}` artifact, so it doubles as a smoke test.
 3. For send-path changes, finish with
    `python cli.py send-test --to verified@inbox.example` and visually
    confirm Gmail and Apple Mail rendering.
-4. There is no formal lint/test harness yet (see milestone 6). At minimum,
-   `python -c "import outreach, scripts"` should succeed.
+4. CI runs `ruff check .` plus the `tests/test_smoke.py` import suite on
+   every push and pull request (see [.github/workflows/ci.yml](.github/workflows/ci.yml)).
+   Run them locally before opening a PR:
+
+   ```bash
+   ruff check .
+   pytest tests/
+   ```
+
+   The smoke test imports every module under `outreach/`, `scripts/`,
+   `web/`, plus `lambda_handler` and `cli`, with dummy env vars set in
+   `tests/conftest.py` — keep that list in sync when you add a new
+   top-level module.
 
 ## Branch and commit policy
 

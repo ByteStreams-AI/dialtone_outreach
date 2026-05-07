@@ -24,9 +24,9 @@ Usage:
 import sys
 
 import click
+from rich import box
 from rich.console import Console
 from rich.table import Table
-from rich import box
 
 # ``outreach.sources`` has no pandas / env dependencies, so importing
 # eagerly here keeps ``cli.py --help`` fast while letting the import
@@ -85,7 +85,7 @@ def status():
 @cli.command("stats")
 def stats():
     """Print conversion rate statistics."""
-    from outreach.db import get_client, get_status_counts, get_emails_sent_today
+    from outreach.db import get_client, get_emails_sent_today, get_status_counts
     client = get_client()
     counts = get_status_counts(client)
     today  = get_emails_sent_today(client)
@@ -121,7 +121,7 @@ def stats():
 @click.option("--domain", default=None, help="Look up by domain")
 def contact(email, domain):
     """Look up a contact and show their full outreach history."""
-    from outreach.db import get_client, search_contacts_by_domain, get_email_log_for_contact
+    from outreach.db import get_client, get_email_log_for_contact, search_contacts_by_domain
     client = get_client()
 
     if email:
@@ -384,8 +384,8 @@ def check_replies(dry_run, audit, fix):
     but contacts.status hasn't been updated (e.g. after a partial failure).
     """
     if audit:
+        from outreach.audit import print_audit_report, run_audit
         from outreach.db import get_client
-        from outreach.audit import run_audit, print_audit_report
         client = get_client()
         result = run_audit(client, fix=fix)
         print_audit_report(result, fix=fix)
@@ -439,9 +439,9 @@ def send_test(to_email, seq, first_name, restaurant_name, city, yes):
     contact through the real ``render_email`` + SES path so what lands
     in the inbox matches what production sends.
     """
-    from outreach.templates import render_email
-    from outreach.email_client import send_email
     from outreach.config import FROM_EMAIL
+    from outreach.email_client import send_email
+    from outreach.templates import render_email
 
     email = render_email(
         sequence_number = seq,

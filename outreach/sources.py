@@ -12,7 +12,6 @@ import pipeline that consumes it.
 """
 from __future__ import annotations
 
-
 # Apollo CSV columns are lower-cased before mapping. We deliberately
 # prefer the *company* address fields over the contact's personal
 # city/state — outreach copy is about the restaurant location, not where

@@ -2,18 +2,22 @@
 runner.py — Orchestrates the daily outreach run.
 """
 from __future__ import annotations
-from datetime import datetime, timezone
+
 from typing import Optional
 
+from rich import box
 from rich.console import Console
 from rich.table import Table
-from rich import box
-from outreach import db, sequence, email_client
-from outreach.templates import render_email
+
+from outreach import db, email_client, sequence
 from outreach.config import (
-    DAILY_SEND_LIMIT, SEQUENCE_STATUS_MAP, FROM_EMAIL,
-    WARMUP_START_DATE, effective_send_limit,
+    DAILY_SEND_LIMIT,
+    FROM_EMAIL,
+    SEQUENCE_STATUS_MAP,
+    WARMUP_START_DATE,
+    effective_send_limit,
 )
+from outreach.templates import render_email
 
 console = Console()
 

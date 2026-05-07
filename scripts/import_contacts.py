@@ -13,13 +13,17 @@ Usage:
     python scripts/import_contacts.py --source manual --file canonical.csv
 """
 from __future__ import annotations
-import sys, os
+
+import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import click
 import pandas as pd
 from rich.console import Console
 from rich.progress import track
+
 from outreach.db import get_client, upsert_contact
 from outreach.sources import SOURCE_MAPS
 from outreach.templates import clean_company_name
@@ -149,7 +153,7 @@ def _missing_required(record: dict) -> list[str]:
 @click.option("--dry-run", is_flag=True, default=False,
               help="Preview import without writing to Supabase")
 def main(source, file, dry_run):
-    console.print(f"\n[bold blue]DialTone Contact Importer[/bold blue]")
+    console.print("\n[bold blue]DialTone Contact Importer[/bold blue]")
     console.print(f"Source: [cyan]{source}[/cyan]  File: [cyan]{file}[/cyan]  "
                   f"{'[yellow]DRY RUN[/yellow]' if dry_run else '[green]LIVE[/green]'}\n")
 
@@ -210,7 +214,7 @@ def main(source, file, dry_run):
             console.print(f"  [red]✗[/red] {record.get('domain')}: {e}")
             errors += 1
 
-    console.print(f"\n[bold]Import complete.[/bold]")
+    console.print("\n[bold]Import complete.[/bold]")
     console.print(f"  Imported: [green]{imported}[/green]")
     console.print(f"  Skipped:  [yellow]{skipped}[/yellow]")
     console.print(f"  Errors:   [red]{errors}[/red]\n")

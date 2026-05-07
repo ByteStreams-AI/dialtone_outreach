@@ -295,16 +295,37 @@ uvicorn web.app:app --reload --port 8000
 
 ---
 
-## Scheduling (Optional)
+## Scheduling (Production)
 
-To run automatically every morning at 8am CT, add a cron job:
+Production schedules the daily run and reply-check on **AWS Lambda +
+EventBridge**. The image is built from the [Dockerfile](Dockerfile)
+on `public.ecr.aws/lambda/python:3.12`; the entrypoint is
+[lambda_handler.py](lambda_handler.py), which dispatches by event
+payload (`{"task":"run"}`, `{"task":"check-replies"}`,
+`{"task":"preflight"}`).
+
+End-to-end deploy lives in [deploy/README.md](deploy/README.md):
+
+```bash
+cp deploy/config.env.example deploy/config.env  # set account ID, region, alert email
+bash deploy/create_iam_role.sh
+bash deploy/build_and_push.sh
+bash deploy/create_lambda.sh
+bash deploy/setup_schedule.sh
+bash deploy/setup_alarms.sh
+```
+
+Each script is idempotent — re-run it after editing `deploy/config.env`
+to update schedules or alarm thresholds. Logs land in CloudWatch under
+`/aws/lambda/dialtone-outreach`. SES bounce/complaint alarms fan out to
+`ALERT_EMAIL` via an SNS topic.
+
+For a one-host cron alternative (left here for the local-dev case):
 
 ```bash
 # crontab -e
 0 8 * * 1-5 cd /path/to/dialtone_outreach && source .venv/bin/activate && python cli.py run >> logs/outreach.log 2>&1
 ```
-
-Or deploy as an AWS Lambda function triggered by EventBridge (same scheduler already in your DialTone stack).
 
 ---
 
@@ -398,12 +419,14 @@ python cli.py check-replies --audit --fix  # auto-correct them
 
 ### Scheduling
 
-During the M2–M3 pilot phase, run `check-replies` manually before each
-cohort send. Automated scheduling (cron, EventBridge + Lambda, or a
-persistent host) is deferred to Milestone 6 (Production Operations)
-so the solution doesn't depend on a development machine.
+In production, `check-replies` runs alongside the daily `run` on the
+same Lambda image, on its own EventBridge schedule (default
+`rate(30 minutes)`). See [deploy/README.md](deploy/README.md) for the
+full setup; the schedule expression is `REPLY_CHECK_SCHEDULE` in
+`deploy/config.env` — drop it to `rate(5 minutes)` to hit the M3 SLA
+exactly.
 
-For local testing with cron (not recommended for production):
+For local testing without AWS, a host cron works too:
 
 ```bash
 # crontab -e

@@ -1,6 +1,6 @@
 ---
 title: DialTone Outreach — Project Status
-last_updated: 2026-05-06
+last_updated: 2026-05-07
 ---
 
 # DialTone Outreach — Project Status
@@ -163,25 +163,28 @@ and merge code paths so the codebase reflects the actual workflow.
 
 ### Milestone 6 — Production Operations
 
-- [ ] **Milestone complete**
+- [ ] **Milestone complete** (code-side landed; awaits the user-side AWS deploy + GitHub branch-protection toggle)
 
 **Goal:** Daily runs are scheduled and observable. New repo has CI/CD wired up.
 
 **Issue:** [#6](https://github.com/ByteStreams-AI/dialtone_outreach/issues/6)
 
+**Scheduling decision:** AWS Lambda container image, invoked by EventBridge. Picked over a cron-on-EC2 host because the existing DialTone stack is AWS-native, the daily-run workload sits well inside the Lambda free tier, and there is no host to maintain. The image packages the same `outreach/` and `scripts/` modules the CLI uses; `lambda_handler.handler` dispatches based on the EventBridge event payload (`{"task": "run"}` / `{"task": "check-replies"}` / `{"task": "preflight"}`).
+
 **Steps:**
 
-- [ ] Add `.github/workflows/` for lint and tests (minimum: `ruff` or `flake8`, plus a smoke test that imports every module).
-- [ ] Configure branch protection on `main` — require passing checks before merge.
-- [ ] Confirm Cloudflare and any other secrets are populated on `ByteStreams-AI/dialtone_outreach` (owned by the user — only verify workflow files reference the right secret names).
-- [ ] Pick a scheduling target — AWS EventBridge → Lambda (consistent with the existing DialTone stack) or cron on a small EC2/host. Document the choice and provision it. **Note:** This also covers scheduling `python cli.py check-replies` (deferred from M3). The reply-checker is a CLI command by design so it can be scheduled alongside the daily `run` command on the same host / Lambda.
-- [ ] Capture run logs to a persistent location (CloudWatch Logs, or a logfile in a known path).
-- [ ] Add an alert for SES bounce/complaint rate thresholds.
+- [x] Add `.github/workflows/ci.yml` — ruff lint + a smoke pytest that imports every module under `outreach/`, `scripts/`, `web/`, plus `lambda_handler` and `cli`. Smoke test caught one regression on first run (`scripts/preview_templates.py` referenced the removed `process_apollo`); fixed.
+- [x] Author the Lambda runtime: [lambda_handler.py](../lambda_handler.py), [Dockerfile](../Dockerfile) (built on `public.ecr.aws/lambda/python:3.12`), and a [.dockerignore](../.dockerignore) that strips tests/docs/CSV exports from the image.
+- [x] Provision scripts under [deploy/](../deploy/) — IAM role, ECR push, Lambda create/update, EventBridge schedules, SES bounce/complaint + Lambda-error alarms via SNS. Each script is idempotent and reads `deploy/config.env`.
+- [x] Document the deploy + branch-protection workflow in [deploy/README.md](../deploy/README.md).
+- [ ] **(User)** Run the deploy scripts against the production AWS account.
+- [ ] **(User)** Configure branch protection on `main` — require the `ci` workflow to pass before merge. Steps in [deploy/README.md#branch-protection](../deploy/README.md#branch-protection).
+- [ ] **(User)** Confirm the `ALERT_EMAIL` SNS subscription and verify the daily run + reply-check schedules fire end-to-end.
 
 **Acceptance criteria:**
 
-- Daily run executes unattended at the scheduled time and logs are reviewable.
-- A failing run page or notification is delivered to the operator.
+- Daily run executes unattended at the scheduled time and logs are reviewable. (Pending the user-side deploy.)
+- A failing run page or notification is delivered to the operator. (Pending the user-side SNS subscription confirmation.)
 
 ---
 

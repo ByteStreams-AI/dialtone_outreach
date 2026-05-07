@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from outreach import db, sequence
-from outreach.config import TERMINAL_STATUSES, Status
+from outreach.config import Status
 from outreach.templates import render_email
 
 _DIR = Path(__file__).resolve().parent
