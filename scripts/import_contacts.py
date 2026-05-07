@@ -21,6 +21,7 @@ import pandas as pd
 from rich.console import Console
 from rich.progress import track
 from outreach.db import get_client, upsert_contact
+from outreach.sources import SOURCE_MAPS
 from outreach.templates import clean_company_name
 
 console = Console()
@@ -58,33 +59,9 @@ CONTACT_COLUMNS: frozenset[str] = frozenset({
     "source",
 })
 
-# ── Source-specific column mappings ───────────────────────────────
-
-# Apollo CSV columns are lower-cased before mapping. We deliberately
-# prefer the *company* address fields over the contact's personal
-# city/state — outreach copy is about the restaurant location, not where
-# the owner happens to live.
-APOLLO_MAP = {
-    "first name":        "owner_first",
-    "last name":         "owner_last",
-    "title":             "title",
-    "email":             "owner_email",
-    "work direct phone": "owner_phone",
-    "company name":      "restaurant_name",
-    "website":           "website",
-    "company city":      "city",
-    "company state":     "state",
-    "company phone":     "business_phone",
-    "company address":   "address",
-}
-
-# A "manual" source already speaks the canonical schema — no rename needed.
-MANUAL_MAP: dict[str, str] = {}
-
-SOURCE_MAPS: dict[str, dict[str, str]] = {
-    "apollo": APOLLO_MAP,
-    "manual": MANUAL_MAP,
-}
+# Source-specific column mappings live in ``outreach.sources`` so the
+# top-level CLI can validate ``--source`` choices without pulling pandas /
+# Supabase imports at module load.
 
 
 # ── Helpers ───────────────────────────────────────────────────────
@@ -201,11 +178,19 @@ def main(source, file, dry_run):
 
         missing = _missing_required(record)
         if missing:
+            console.print(
+                f"  [dim]skip[/dim] domain={record.get('domain') or '?'}  "
+                f"missing={sorted(missing)}"
+            )
             skipped += 1
             continue
 
         passes, reason = passes_quality_filter(row, source)
         if not passes:
+            console.print(
+                f"  [dim]skip[/dim] domain={record.get('domain') or '?'}  "
+                f"reason={reason}"
+            )
             skipped += 1
             continue
 

@@ -28,6 +28,12 @@ from rich.console import Console
 from rich.table import Table
 from rich import box
 
+# ``outreach.sources`` has no pandas / env dependencies, so importing
+# eagerly here keeps ``cli.py --help`` fast while letting the import
+# command derive its ``--source`` choices from the same registry the
+# importer uses.
+from outreach.sources import SOURCE_MAPS
+
 console = Console()
 
 
@@ -40,7 +46,7 @@ def cli():
 # ── import ────────────────────────────────────────────────────────
 @cli.command("import")
 @click.option("--source", default="apollo", show_default=True,
-              type=click.Choice(["apollo", "manual"], case_sensitive=False),
+              type=click.Choice(sorted(SOURCE_MAPS.keys()), case_sensitive=False),
               help="CSV source. 'manual' expects canonical-schema columns.")
 @click.option("--file",   required=True, type=click.Path(exists=True))
 @click.option("--dry-run", is_flag=True, default=False)

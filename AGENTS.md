@@ -111,7 +111,9 @@ M2 live cohort flow (`preflight` → `cohort lock` → `run --cohort`
 - **Input contract:** `scripts/import_contacts.py::REQUIRED_FIELDS` defines
   the canonical minimum every imported row must satisfy regardless of
   source (`domain`, `owner_email`). Source-specific column-name mappings
-  live in `SOURCE_MAPS` — add a new entry there to support a new vendor.
+  live in `outreach/sources.py::SOURCE_MAPS` — add a new entry there to
+  support a new vendor and both `cli.py` and the importer pick it up
+  automatically.
 - **Contact column allowlist:** `scripts/import_contacts.py::CONTACT_COLUMNS`
   mirrors the columns on the `contacts` table in `schema.sql`. The import
   loop filters every CSV row through it so vendor-specific extras

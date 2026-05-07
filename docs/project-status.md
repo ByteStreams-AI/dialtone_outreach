@@ -9,7 +9,7 @@ last_updated: 2026-05-06
 Cold email sequencer for restaurant owner outreach. Stack is AWS SES + Supabase + Click/Rich CLI, with a planned local FastAPI + Jinja2 + HTMX UI for non-technical reviewers.
 **Current state:** Sequence engine, contact import (Apollo), and CLI dashboard are functional. Repo migrated to `ByteStreams-AI/dialtone_outreach` (private). Milestone 1 (email-generation hardening) merged via PR #7. **First live cohort sent on 2026-04-30** (`batch-1`, 5 contacts, 0 send-time errors). Milestone 2 is now waiting on the 7-day metrics review (bounce / complaint / reply rates against the M2 thresholds). Reviewers still cannot self-serve outcomes — that gap is what motivates the web UI milestone.
 **Active scope decisions:**
-- Imports flow through a canonical input contract (`scripts/import_contacts.py::REQUIRED_FIELDS`); each source has its own column-name mapping in `SOURCE_MAPS`. Apollo is the primary source today; `manual` accepts canonical-schema CSVs from any other origin.
+- Imports flow through a canonical input contract (`scripts/import_contacts.py::REQUIRED_FIELDS`); each source has its own column-name mapping in `outreach/sources.py::SOURCE_MAPS`. Apollo is the primary source today; `manual` accepts canonical-schema CSVs from any other origin.
 - Sending stays in the CLI. The web UI is read + status-edit only.
 - Secrets are managed by the user on `ByteStreams-AI` (Cloudflare and others to be added).
 

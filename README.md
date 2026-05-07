@@ -155,7 +155,8 @@ Required fields per row, regardless of source: `domain` and `owner_email`.
 Rows missing either are skipped. Personalization fields (`restaurant_name`,
 `owner_first`, `city`) are optional but recommended — see
 `scripts/import_contacts.py::REQUIRED_FIELDS` for the full input contract,
-and `SOURCE_MAPS` for the column-name mapping each source uses.
+and `outreach/sources.py::SOURCE_MAPS` for the column-name mapping each
+source uses.
 
 ### Step 3 — Preview today's run
 
