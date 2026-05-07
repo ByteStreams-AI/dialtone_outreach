@@ -192,14 +192,23 @@ staging environment.
 
 ### Schedules
 
-| Rule | Cron / rate | Payload | Purpose |
+| Rule | Schedule | Local time | Payload |
 |---|---|---|---|
-| `dialtone-outreach-daily-run` | weekdays 14:00 UTC | `{"task":"run"}` | Today's outreach send |
-| `dialtone-outreach-reply-check` | every 30 min | `{"task":"check-replies"}` | IMAP reply sweep |
+| `dialtone-outreach-daily-run` | `cron(0 14 ? * MON-FRI *)` | 9 AM Central (CDT) / 8 AM Central (CST), weekdays only | `{"task":"run"}` |
+| `dialtone-outreach-reply-check` | `rate(30 minutes)` | every 30 min, 24/7 | `{"task":"check-replies"}` |
 
-Schedule expressions live in `deploy/config.env` and are applied by
-`deploy/setup_schedule.sh`. To change the cadence: edit `config.env`,
-re-run the script.
+Schedule expressions live in `deploy/config.env` (`DAILY_RUN_SCHEDULE`,
+`REPLY_CHECK_SCHEDULE`) and are applied by `deploy/setup_schedule.sh`.
+To change the cadence: edit `config.env`, re-run the script.
+
+Confirm what's actually deployed in your account:
+
+```bash
+aws events describe-rule --name dialtone-outreach-daily-run \
+  --region us-east-1 --query 'ScheduleExpression'
+aws events describe-rule --name dialtone-outreach-reply-check \
+  --region us-east-1 --query 'ScheduleExpression'
+```
 
 ### Manual Lambda invocations
 
