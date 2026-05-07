@@ -10,6 +10,9 @@ command an operator runs by hand, the production Lambda runtime, and
 how to respond when an alarm fires. For the one-time first-cohort
 ramp-up, see [runbook-first-cohort.md](runbook-first-cohort.md). For
 reviewer-facing web-UI usage, see [web-ui-guide.md](web-ui-guide.md).
+For visual flowcharts of every production process — daily cycle, reply
+detection, manual cohort send, alarm response, emergency pause — see
+[process-flow.md](process-flow.md).
 
 ## At a glance
 
