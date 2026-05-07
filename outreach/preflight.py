@@ -31,11 +31,13 @@ CheckStatus = Literal["pass", "warn", "fail", "skip"]
 
 # Required env vars that ``outreach.config`` will already raise on. We
 # still include them in the report so the operator sees the full picture.
+# AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY are deliberately omitted —
+# boto3's default credential chain accepts profiles and IAM roles too,
+# so a missing env-var pair isn't itself a failure. The SES preflight
+# checks below validate that *some* auth source actually works.
 _REQUIRED_ENV_VARS: tuple[str, ...] = (
     "SUPABASE_URL",
     "SUPABASE_SERVICE_KEY",
-    "AWS_ACCESS_KEY_ID",
-    "AWS_SECRET_ACCESS_KEY",
     "FROM_EMAIL",
     "BUSINESS_ADDRESS",
 )
