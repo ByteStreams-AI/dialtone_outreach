@@ -264,7 +264,7 @@ def _check_dns_records() -> Iterable[CheckResult]:
         return
 
     try:
-        import dns.resolver  # type: ignore[import-not-found]
+        import dns.resolver  # type: ignore[import-not-found]  # noqa: F401  (availability check)
     except ImportError:
         skip_detail = "dnspython not installed; run `dig TXT <domain>` manually"
         yield CheckResult(name="dns: spf", status="skip", detail=skip_detail)

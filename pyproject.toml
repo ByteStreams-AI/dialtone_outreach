@@ -10,3 +10,18 @@ dependencies = [
     "uvicorn[standard]>=0.32.0",
     "python-multipart>=0.0.20",
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [".venv", "developer", "deploy"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+# E501: line length is enforced by formatter, not the linter — many of
+# the existing template strings are intentionally long.
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

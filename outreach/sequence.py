@@ -2,12 +2,16 @@
 sequence.py — Determines which contacts are due for which email today.
 """
 from __future__ import annotations
-from datetime import datetime, timezone, timedelta
+
+from datetime import datetime, timezone
 from typing import Optional
-from outreach.config import (
-    SEQUENCE_DELAYS, TERMINAL_STATUSES, SEQUENCE_STATUS_MAP, Status,
-)
+
 from outreach import db
+from outreach.config import (
+    SEQUENCE_DELAYS,
+    TERMINAL_STATUSES,
+    Status,
+)
 
 
 def next_sequence_number(contact: dict) -> Optional[int]:

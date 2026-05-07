@@ -27,14 +27,13 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from pathlib import Path
-from typing import Iterable
 
 import click
 import pandas as pd
 from rich.console import Console
 
 from outreach.templates import TEMPLATES, render_email
-from scripts.import_contacts import process_apollo
+from scripts.import_contacts import process
 
 console = Console()
 
@@ -57,7 +56,7 @@ def _pick_samples(df: pd.DataFrame, count: int) -> list[dict]:
     """Pick up to ``count`` Apollo rows that have both an email and name.
 
     Args:
-        df: DataFrame produced by ``process_apollo``.
+        df: DataFrame produced by ``process(..., source="apollo")``.
         count: Maximum number of sample contacts to return.
 
     Returns:
@@ -123,7 +122,7 @@ def render_previews(csv_path: Path, out_dir: Path, count: int) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     raw = pd.read_csv(csv_path, dtype=str, low_memory=False)
-    df = process_apollo(raw)
+    df = process(raw, source="apollo")
     samples = _pick_samples(df, count)
     if not samples:
         console.print("[red]No usable Apollo rows found in CSV.[/red]")

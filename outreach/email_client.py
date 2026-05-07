@@ -2,11 +2,15 @@
 email_client.py — AWS SES wrapper for sending outreach emails
 """
 from __future__ import annotations
+
 import boto3
 from botocore.exceptions import ClientError
+
 from outreach.config import (
-    AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION,
-    FROM_FULL, FROM_EMAIL,
+    AWS_ACCESS_KEY_ID,
+    AWS_REGION,
+    AWS_SECRET_ACCESS_KEY,
+    FROM_FULL,
 )
 
 

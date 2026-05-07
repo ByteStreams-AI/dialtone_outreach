@@ -3,12 +3,15 @@ db.py — Supabase client and all database operations
 """
 
 from __future__ import annotations
+
 from datetime import datetime, timezone
 from typing import Optional
-from supabase import create_client, Client
+
+from supabase import Client, create_client
+
 from outreach.config import (
-    SUPABASE_URL,
     SUPABASE_SERVICE_KEY,
+    SUPABASE_URL,
     TERMINAL_STATUSES,
     Status,
 )
