@@ -195,8 +195,11 @@ python cli.py contact --domain rossieskitchen.com
 ## First Live Cohort (Milestone 2)
 
 Once the M1 templates pass review, the M2 path is operator-driven but
-backed by repo tooling. Runbook lives in `docs/runbook-first-cohort.md`.
-Quick reference:
+backed by repo tooling. Runbook lives in
+[docs/runbook-first-cohort.md](docs/runbook-first-cohort.md). For
+steady-state production operations after the first cohort — daily
+checklist, alarm response, manual Lambda invocations — see
+[docs/runbook-production.md](docs/runbook-production.md). Quick reference:
 
 ```bash
 # Set the warmup start date in .env, then:
