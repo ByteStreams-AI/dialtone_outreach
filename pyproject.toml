@@ -13,6 +13,7 @@ dependencies = [
     "tenacity>=8.2.0",
     "rich>=13.0.0",
     "python-dotenv>=1.2.2",
+    "supabase>=2.31.0",
 ]
 
 [project.scripts]
@@ -24,9 +25,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.uv]
 package = true
-
-[tool.uv.scripts]
-setup = "git config core.hooksPath .githooks && chmod +x .githooks/pre-commit"
 
 [tool.setuptools.packages.find]
 include = ["scraper*", "lead_tools*"]

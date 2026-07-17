@@ -20,3 +20,8 @@ class LeadItem(BaseModel):
     delivery_platforms: str | None = None
     uses_doordash_marketing: bool | None = None
     uses_chownow: bool | None = None
+    business_type: str | None = None  # food_truck | single_location | multi_location | enterprise
+    website_url: str | None = None
+    price_range: str | None = None  # $, $$, $$$, $$$$
+    yelp_rating: float | None = None
+    yelp_review_count: int | None = None
