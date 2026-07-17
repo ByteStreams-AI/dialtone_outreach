@@ -1,27 +1,47 @@
 [project]
-name = "dialtone-outreach"
+name = "lead-discovery-scraper"
 version = "0.1.0"
-description = "Add your description here"
+description = "Neutral scraper starter for restaurant lead discovery"
 readme = "README.md"
-requires-python = ">=3.12.12"
+requires-python = ">=3.12"
 dependencies = [
-    "dnspython>=2.8.0",
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.32.0",
-    "python-multipart>=0.0.20",
+    "click>=8.1.0",
+    "httpx>=0.25.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=4.9.0",
+    "pydantic>=2.8.0",
+    "tenacity>=8.2.0",
+    "rich>=13.0.0",
+    "python-dotenv>=1.2.2",
 ]
+
+[project.scripts]
+dialtone = "cli:cli"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv]
+package = true
+
+[tool.setuptools.packages.find]
+include = ["scraper*", "lead_tools*"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-extend-exclude = [".venv", "developer", "deploy"]
+extend-exclude = [".venv", "developer"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
-# E501: line length is enforced by formatter, not the linter — many of
-# the existing template strings are intentionally long.
 ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
