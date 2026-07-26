@@ -22,6 +22,24 @@
 
 ## Journal Entries
 
+### 2026-07-26 — Feature — Add readable CDC actor email
+**Phase:** Data integrity
+**Files Changed:** db/migrations/007_add_lead_change_actor_email.sql, tests/test_lead_change_log_migration.py
+**Summary:** Extended lead change events with `changed_by_email`. The trigger prefers authenticated Supabase JWT email claims and falls back to a trusted server request header for Cloudflare Access users.
+**Notes:** Existing events cannot be backfilled reliably. Scraper and other service-role changes without a user email remain identifiable as service operations.
+
+### 2026-07-26 — Feature — Add lead change data capture
+**Phase:** Data integrity
+**Files Changed:** db/migrations/006_add_lead_change_log.sql, tests/test_lead_change_log_migration.py
+**Summary:** Added trigger-based CDC for the `leads` table. Every insert, update, and delete now produces a durable JSONB audit event containing old/new row snapshots, the Supabase actor when available, timestamp, and PostgreSQL transaction ID.
+**Notes:** The audit table has RLS enabled, is readable by authenticated users, and rejects direct inserts, updates, deletes, and truncation from application roles. Delete events intentionally retain `lead_id` without a foreign key so their history survives removal of the source row.
+
+### 2026-07-26 — Bug Fix — Preserve curated leads during city re-scrapes
+**Phase:** Data integrity
+**Files Changed:** scraper/db.py, tests/test_db.py
+**Summary:** Changed Yelp scrape conflict handling to ignore existing `(business_name, city)` rows instead of merging scrape data into them. This prevents `scrape-city` from overwriting curated CRM values and making updated leads disappear from filtered views. Added a regression test using ChopnBlok as the representative Houston lead.
+**Notes:** Conditional enrichment still fills `business_type` and `website_url` only when those database fields are NULL. Live verification of the affected row was unavailable because Supabase credentials were not present in the shell.
+
 ### 2026-07-17 — Infrastructure — Migrated to uv project management
 **Phase:** Developer experience
 **Files Changed:** pyproject.toml, .python-version, docs/runbook.md, README.md, removed requirements.txt
