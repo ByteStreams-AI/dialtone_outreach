@@ -22,6 +22,17 @@
 
 ## Journal Entries
 
+### 2026-07-28 — Feature — Add editable contact phone
+**Phase:** CRM usability
+**Files Changed:** db/migrations/009_add_contact_phone.sql, docs/CRM-SQL-Schema.md, bytestreams_info CRM types, data access, route, and view
+**Summary:** Added nullable `contact_phone` storage and exposed it as an editable, normalized, click-to-dial field in the CRM lead table and forms.
+
+### 2026-07-28 — Feature — Add dialable lead phone URIs
+**Phase:** CRM usability
+**Files Changed:** cli.py, db/migrations/008_normalize_lead_phone_tel_uri.sql, tests/test_phone_normalization.py
+**Summary:** Normalized scraped and manually entered phone numbers to `tel:` URIs, using E.164 for US and explicitly international numbers and digit-only local URIs otherwise. Added a guarded data migration for existing Supabase leads.
+**Notes:** The migration aborts if multiple legacy values normalize to the same unique phone number so those duplicate leads can be reviewed before retrying.
+
 ### 2026-07-26 — Feature — Add readable CDC actor email
 **Phase:** Data integrity
 **Files Changed:** db/migrations/007_add_lead_change_actor_email.sql, tests/test_lead_change_log_migration.py

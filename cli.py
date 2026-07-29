@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import re
+
 import click
 from dotenv import load_dotenv
 from rich.console import Console
@@ -16,6 +18,42 @@ from scraper.export import write_csv, write_json
 from scraper.houston import scrape_houston
 
 console = Console()
+
+
+def normalize_phone(phone: str | None) -> str | None:
+    """Return a dialable tel URI, defaulting 10-digit numbers to US E.164."""
+    if not phone or not phone.strip():
+        return None
+
+    value = phone.strip()
+    if value.lower().startswith("tel:"):
+        value = value[4:].strip()
+
+    international = value.startswith("+") or value.startswith("00")
+    digits = re.sub(r"\D", "", value)
+    if value.startswith("00"):
+        digits = digits[2:]
+
+    if not 3 <= len(digits) <= 15:
+        raise ValueError(f"Invalid phone number: {phone}")
+
+    if international:
+        if digits.startswith("0"):
+            raise ValueError(f"Invalid international phone number: {phone}")
+        return f"tel:+{digits}"
+    if len(digits) == 10:
+        return f"tel:+1{digits}"
+    if len(digits) == 11 and digits.startswith("1"):
+        return f"tel:+{digits}"
+    return f"tel:{digits}"
+
+
+def _normalize_lead_phones(leads: list) -> None:
+    for lead in leads:
+        try:
+            lead.phone = normalize_phone(lead.phone)
+        except ValueError:
+            lead.phone = None
 
 
 @click.group()
@@ -130,6 +168,7 @@ def scrape_houston_cmd(
         console.print("[yellow]No leads returned.[/yellow]")
         return
 
+    _normalize_lead_phones(leads)
     for lead in leads:
         console.print(f"- [cyan]{lead.name}[/cyan] | {lead.phone or '—'} | {lead.address or '—'}")
 
@@ -139,7 +178,11 @@ def scrape_houston_cmd(
     if not no_db:
         try:
             written, skipped_blank = upsert_leads(leads)
-            suffix = f" ({skipped_blank} skipped — missing name/city)" if skipped_blank else ""
+            suffix = (
+                f" ({skipped_blank} skipped — duplicate or missing name/city)"
+                if skipped_blank
+                else ""
+            )
             console.print(f"[green]Supabase:[/green] {written} rows upserted{suffix}")
         except ValueError as exc:
             console.print(f"[yellow]Supabase skipped:[/yellow] {exc}")
@@ -159,7 +202,224 @@ def scrape_houston_cmd(
             if skipped_csv
             else ""
         )
-        console.print(f"[green]{verb}[/green] {written_csv} leads \u2192 {output}{suffix}")
+        console.print(f"[green]{verb}[/green] {written_csv} leads → {output}{suffix}")
+
+
+def _scrape_location_cmd(
+    location: str,
+    limit: int,
+    offset: int,
+    api_key: str | None,
+    output: str | None,
+    no_db: bool,
+) -> None:
+    """Shared implementation for all city scrape commands."""
+    console.print(
+        f"[bold]Fetching restaurants via Yelp[/bold] — {location} (limit={limit}, offset={offset})"
+    )
+    try:
+        leads = scrape_houston(
+            limit=limit, offset=offset, location=location, api_key=api_key or None
+        )
+    except ValueError as exc:
+        console.print(f"[red]Setup required:[/red] {exc}")
+        raise click.Abort()
+    except Exception as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise click.Abort()
+
+    if not leads:
+        console.print("[yellow]No leads returned.[/yellow]")
+        return
+
+    _normalize_lead_phones(leads)
+    for lead in leads:
+        console.print(f"- [cyan]{lead.name}[/cyan] | {lead.phone or '—'} | {lead.address or '—'}")
+
+    console.print(f"\n[bold]{len(leads)}[/bold] leads fetched.")
+
+    if not no_db:
+        try:
+            written, skipped_blank = upsert_leads(leads)
+            suffix = (
+                f" ({skipped_blank} skipped — duplicate or missing name/city)"
+                if skipped_blank
+                else ""
+            )
+            console.print(f"[green]Supabase:[/green] {written} rows upserted{suffix}")
+        except ValueError as exc:
+            console.print(f"[yellow]Supabase skipped:[/yellow] {exc}")
+        except Exception as exc:
+            console.print(f"[red]Supabase error:[/red] {exc}")
+
+    if output:
+        from pathlib import Path
+
+        existing = Path(output).exists()
+        written_csv = write_csv(output, leads)
+        skipped_csv = len(leads) - written_csv
+        verb = "Appended" if existing else "Exported"
+        suffix = (
+            f" ({skipped_csv} duplicate{'s' if skipped_csv != 1 else ''} skipped)"
+            if skipped_csv
+            else ""
+        )
+        console.print(f"[green]{verb}[/green] {written_csv} leads → {output}{suffix}")
+
+
+def _city_options(f: click.decorators.FC) -> click.decorators.FC:
+    """Common options shared by all city scrape commands."""
+    f = click.option(
+        "--limit", default=50, type=int, help="Number of records to fetch (max 50 per Yelp call)."
+    )(f)
+    f = click.option(
+        "--offset", default=0, type=int, help="Pagination offset (increment by 50 for next page)."
+    )(f)
+    f = click.option("--api-key", default=None, envvar="YELP_API_KEY", help="Yelp Fusion API key.")(
+        f
+    )
+    f = click.option(
+        "--output",
+        type=click.Path(dir_okay=False, writable=True),
+        default=None,
+        help="Optional CSV file path.",
+    )(f)
+    f = click.option("--no-db", is_flag=True, default=False, help="Skip Supabase upsert.")(f)
+    return f
+
+
+@cli.command("scrape-city")
+@click.option(
+    "--location",
+    required=True,
+    help='Yelp location string, e.g. "Memphis, TN" or "Nashville, TN".',
+)
+@_city_options
+def scrape_city_cmd(
+    location: str, limit: int, offset: int, api_key: str | None, output: str | None, no_db: bool
+) -> None:
+    """Fetch restaurant leads for any city from Yelp and upsert into Supabase."""
+    _scrape_location_cmd(location, limit, offset, api_key, output, no_db)
+
+
+@cli.command("scrape-memphis")
+@_city_options
+def scrape_memphis_cmd(
+    limit: int, offset: int, api_key: str | None, output: str | None, no_db: bool
+) -> None:
+    """Fetch Memphis, TN restaurant leads from Yelp and upsert into Supabase."""
+    _scrape_location_cmd("Memphis, TN", limit, offset, api_key, output, no_db)
+
+
+_BUSINESS_TYPE_CHOICES = (
+    "food_truck",
+    "single_location",
+    "multi_configuration",
+    "multi_location",
+    "enterprise",
+)
+
+
+@cli.command("add-lead")
+def add_lead_cmd() -> None:
+    """Manually add a new lead record to Supabase."""
+    from scraper.db import insert_lead
+
+    console.rule("[bold]Add New Lead[/bold]")
+    console.print(f"  {click.style('*', fg='red', bold=True)} = required\n")
+
+    def _required(label: str) -> str:
+        return click.style("* ", fg="red", bold=True) + label
+
+    def _optional(label: str, hint: str = "") -> str:
+        suffix = f" [{hint}]" if hint else " [optional]"
+        return "  " + label + suffix
+
+    def prompt_required(label: str) -> str:
+        value = ""
+        while not value:
+            value = click.prompt(_required(label)).strip()
+            if not value:
+                console.print(f"[red]{label} is required.[/red]")
+        return value
+
+    # ── Required ──────────────────────────────────────────────────────────────
+    business_name = prompt_required("Business Name")
+    city = prompt_required("City")
+    state = prompt_required("State")
+
+    # ── Optional ──────────────────────────────────────────────────────────────
+    while True:
+        phone_input = click.prompt(_optional("Phone"), default="").strip() or None
+        try:
+            phone = normalize_phone(phone_input)
+            break
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/red]")
+    email = click.prompt(_optional("Email"), default="").strip() or None
+    address = click.prompt(_optional("Address"), default="").strip() or None
+    contact_name = click.prompt(_optional("Contact Name"), default="").strip() or None
+    website_url = click.prompt(_optional("Website URL"), default="").strip() or None
+
+    bt_hint = "/".join(_BUSINESS_TYPE_CHOICES)
+    business_type_raw = (
+        click.prompt(_optional("Business Type", bt_hint), default="").strip() or None
+    )
+    if business_type_raw and business_type_raw not in _BUSINESS_TYPE_CHOICES:
+        console.print(
+            f"[yellow]Warning:[/yellow] '{business_type_raw}' is not a recognized type. "
+            f"Valid: {bt_hint}"
+        )
+        if not click.confirm("  Use it anyway?", default=False):
+            business_type_raw = None
+
+    notes = click.prompt(_optional("Notes"), default="").strip() or None
+
+    # ── Summary ───────────────────────────────────────────────────────────────
+    console.rule()
+    fields = [
+        ("Business Name", business_name),
+        ("City", city),
+        ("State", state),
+        ("Phone", phone),
+        ("Email", email),
+        ("Address", address),
+        ("Contact Name", contact_name),
+        ("Website URL", website_url),
+        ("Business Type", business_type_raw),
+        ("Notes", notes),
+    ]
+    for label, value in fields:
+        if value:
+            console.print(f"  [bold]{label}:[/bold] {value}")
+    console.rule()
+
+    if not click.confirm("Save this lead?", default=True):
+        console.print("[yellow]Cancelled.[/yellow]")
+        return
+
+    row = {
+        "business_name": business_name,
+        "city": city,
+        "state": state,
+        "phone": phone,
+        "email": email,
+        "address": address,
+        "contact_name": contact_name,
+        "website_url": website_url,
+        "business_type": business_type_raw,
+        "notes": notes,
+    }
+    # Strip None values so DB defaults apply cleanly
+    row = {k: v for k, v in row.items() if v is not None}
+
+    try:
+        result = insert_lead(row)
+        lead_id = result.get("lead_id", "—")
+        console.print(f"[green]Saved![/green] Lead ID: {lead_id}")
+    except Exception as exc:
+        console.print(f"[red]Error saving lead:[/red] {exc}")
+        raise click.Abort()
 
 
 if __name__ == "__main__":

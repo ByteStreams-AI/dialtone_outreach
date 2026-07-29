@@ -32,6 +32,7 @@ CREATE TABLE leads (
     -- Identity
     business_name        VARCHAR(255) NOT NULL,
     contact_name         VARCHAR(255),
+    contact_phone        VARCHAR(50),
     phone                VARCHAR(50),
     email                VARCHAR(255),
     address              TEXT,
