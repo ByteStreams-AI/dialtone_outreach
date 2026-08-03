@@ -38,9 +38,10 @@ def _lead_to_row(lead: LeadItem) -> dict:
         "has_app": lead.has_app,
         "offers_delivery": lead.offers_delivery,
         "offers_pickup": lead.offers_pickup,
+        "email": lead.email or None,
         "delivery_platforms": lead.delivery_platforms or None,
-        "uses_doordash_mktg": lead.uses_doordash_marketing,
-        "uses_chownow": lead.uses_chownow,
+        "marketplace_providers": lead.marketplace_providers or None,
+        "first_party_ordering": lead.first_party_ordering or None,
         "notes": lead.notes or None,
         "price_range": lead.price_range,
         "yelp_rating": lead.yelp_rating,
@@ -94,6 +95,9 @@ def upsert_leads(leads: Sequence[LeadItem]) -> tuple[int, int]:
     skipped = 0
     leads_with_type: list[LeadItem] = []
     leads_with_website: list[LeadItem] = []
+    leads_with_email: list[LeadItem] = []
+    leads_with_marketplace: list[LeadItem] = []
+    leads_with_first_party: list[LeadItem] = []
 
     for lead in leads:
         if not lead.name.strip() or not lead.city:
@@ -104,6 +108,12 @@ def upsert_leads(leads: Sequence[LeadItem]) -> tuple[int, int]:
             leads_with_type.append(lead)
         if lead.website_url:
             leads_with_website.append(lead)
+        if lead.email:
+            leads_with_email.append(lead)
+        if lead.marketplace_providers:
+            leads_with_marketplace.append(lead)
+        if lead.first_party_ordering:
+            leads_with_first_party.append(lead)
 
     if not rows:
         return 0, skipped
@@ -148,6 +158,39 @@ def upsert_leads(leads: Sequence[LeadItem]) -> tuple[int, int]:
             .eq("business_name", lead.name)
             .eq("city", lead.city)
             .is_("website_url", "null")
+            .execute()
+        )
+
+    # Step 4: set email only where it is still NULL
+    for lead in leads_with_email:
+        (
+            client.table("leads")
+            .update({"email": lead.email})
+            .eq("business_name", lead.name)
+            .eq("city", lead.city)
+            .is_("email", "null")
+            .execute()
+        )
+
+    # Step 5: set marketplace_providers only where it is still NULL
+    for lead in leads_with_marketplace:
+        (
+            client.table("leads")
+            .update({"marketplace_providers": lead.marketplace_providers})
+            .eq("business_name", lead.name)
+            .eq("city", lead.city)
+            .is_("marketplace_providers", "null")
+            .execute()
+        )
+
+    # Step 6: set first_party_ordering only where it is still NULL
+    for lead in leads_with_first_party:
+        (
+            client.table("leads")
+            .update({"first_party_ordering": lead.first_party_ordering})
+            .eq("business_name", lead.name)
+            .eq("city", lead.city)
+            .is_("first_party_ordering", "null")
             .execute()
         )
 

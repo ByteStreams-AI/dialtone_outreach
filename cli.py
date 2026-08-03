@@ -15,6 +15,7 @@ from lead_tools.cli import render_leads, seed_demo_leads
 from scraper import scrape_url
 from scraper.db import upsert_leads
 from scraper.export import write_csv, write_json
+from scraper.apify_google_maps import scrape_google_maps
 from scraper.houston import scrape_houston
 
 console = Console()
@@ -309,6 +310,119 @@ def scrape_memphis_cmd(
 ) -> None:
     """Fetch Memphis, TN restaurant leads from Yelp and upsert into Supabase."""
     _scrape_location_cmd("Memphis, TN", limit, offset, api_key, output, no_db)
+
+
+@cli.command("scrape-google-maps")
+@click.option(
+    "--search",
+    "search_terms",
+    multiple=True,
+    default=["restaurant"],
+    show_default=True,
+    help='Search terms, e.g. --search restaurant --search "food truck".',
+)
+@click.option(
+    "--location",
+    default="Houston, TX",
+    show_default=True,
+    help="Location query, e.g. 'Houston, TX'.",
+)
+@click.option(
+    "--limit", default=50, type=int, show_default=True, help="Max results per search term."
+)
+@click.option(
+    "--api-token",
+    default=None,
+    envvar="APIFY_API_TOKEN",
+    help="Apify API token (or set APIFY_API_TOKEN env var).",
+)
+@click.option(
+    "--output",
+    type=click.Path(dir_okay=False, writable=True),
+    default=None,
+    help="Optional CSV file path.",
+)
+@click.option("--no-db", is_flag=True, default=False, help="Skip Supabase upsert.")
+def scrape_google_maps_cmd(
+    search_terms: tuple[str, ...],
+    location: str,
+    limit: int,
+    api_token: str | None,
+    output: str | None,
+    no_db: bool,
+) -> None:
+    """Discover leads via Apify Google Maps Scraper and upsert into Supabase.
+
+    Returns richer data than Yelp: email, confirmed delivery platforms,
+    reservation system, and food truck detection. DB deduplication merges
+    results with existing Yelp-sourced leads by (business_name, city).
+
+    Requires APIFY_API_TOKEN in .env. Free plan: ~3,300 places/month.
+    Starter plan ($29/mo): ~19,000 places/month.
+
+    Examples:
+
+      uv run python cli.py scrape-google-maps --location "Houston, TX"
+
+      uv run python cli.py scrape-google-maps --search restaurant --search "food truck" --limit 100
+    """
+    console.print(
+        f"[bold]Fetching via Apify Google Maps[/bold] — {location} "
+        f"(terms={list(search_terms)}, limit={limit})"
+    )
+    try:
+        leads = scrape_google_maps(
+            search_terms=list(search_terms),
+            location=location,
+            limit=limit,
+            api_token=api_token or None,
+        )
+    except ValueError as exc:
+        console.print(f"[red]Setup required:[/red] {exc}")
+        raise click.Abort()
+    except Exception as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise click.Abort()
+
+    if not leads:
+        console.print("[yellow]No leads returned.[/yellow]")
+        return
+
+    _normalize_lead_phones(leads)
+    for lead in leads:
+        email_tag = f" | [green]{lead.email}[/green]" if lead.email else ""
+        mkt = lead.marketplace_providers or "—"
+        console.print(f"- [cyan]{lead.name}[/cyan] | {lead.phone or '—'} | mkt={mkt}{email_tag}")
+
+    console.print(f"\n[bold]{len(leads)}[/bold] leads fetched.")
+
+    if not no_db:
+        try:
+            written, skipped_blank = upsert_leads(leads)
+            suffix = (
+                f" ({skipped_blank} skipped — duplicate or missing name/city)"
+                if skipped_blank
+                else ""
+            )
+            console.print(f"[green]Supabase:[/green] {written} rows upserted{suffix}")
+        except ValueError as exc:
+            console.print(f"[yellow]Supabase skipped:[/yellow] {exc}")
+        except Exception as exc:
+            console.print(f"[red]Supabase error:[/red] {exc}")
+
+    if output:
+        from pathlib import Path
+
+        existing = Path(output).exists()
+        written_csv = write_csv(output, leads)
+        skipped_csv = len(leads) - written_csv
+        verb = "Appended" if existing else "Exported"
+        suffix = (
+            f" ({skipped_csv} duplicate{'s' if skipped_csv != 1 else ''} skipped)"
+            if skipped_csv
+            else ""
+        )
+        console.print(f"[green]{verb}[/green] {written_csv} leads → {output}{suffix}")
 
 
 _BUSINESS_TYPE_CHOICES = (

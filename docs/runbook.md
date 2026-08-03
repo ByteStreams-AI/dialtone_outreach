@@ -110,8 +110,8 @@ The CSV and JSON exports include:
 - offers_pickup
 - offers_delivery
 - delivery_platforms
-- uses_doordash_marketing
-- uses_chownow
+- marketplace_providers
+- first_party_ordering
 
 ## Notes
 

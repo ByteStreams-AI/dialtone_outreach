@@ -45,9 +45,10 @@ def write_csv(path: str, leads: Iterable[LeadItem]) -> int:
         "has_app",
         "offers_pickup",
         "offers_delivery",
+        "email",
         "delivery_platforms",
-        "uses_doordash_marketing",
-        "uses_chownow",
+        "marketplace_providers",
+        "first_party_ordering",
     ]
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -76,9 +77,10 @@ def write_csv(path: str, leads: Iterable[LeadItem]) -> int:
                     "has_app": _serialize_bool(lead.has_app),
                     "offers_pickup": _serialize_bool(lead.offers_pickup),
                     "offers_delivery": _serialize_bool(lead.offers_delivery),
+                    "email": lead.email or "",
                     "delivery_platforms": lead.delivery_platforms or "",
-                    "uses_doordash_marketing": _serialize_bool(lead.uses_doordash_marketing),
-                    "uses_chownow": _serialize_bool(lead.uses_chownow),
+                    "marketplace_providers": lead.marketplace_providers or "",
+                    "first_party_ordering": lead.first_party_ordering or "",
                 }
             )
             written += 1

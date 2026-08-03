@@ -19,8 +19,8 @@ class CallPrepFieldTests(unittest.TestCase):
             offers_pickup=True,
             offers_delivery=True,
             delivery_platforms="DoorDash, Uber Eats",
-            uses_doordash_marketing=True,
-            uses_chownow=True,
+            marketplace_providers="DoorDash, Uber Eats",
+            first_party_ordering="ChowNow",
         )
 
         self.assertTrue(lead.has_website)
@@ -28,8 +28,8 @@ class CallPrepFieldTests(unittest.TestCase):
         self.assertTrue(lead.offers_pickup)
         self.assertTrue(lead.offers_delivery)
         self.assertEqual(lead.delivery_platforms, "DoorDash, Uber Eats")
-        self.assertTrue(lead.uses_doordash_marketing)
-        self.assertTrue(lead.uses_chownow)
+        self.assertEqual(lead.marketplace_providers, "DoorDash, Uber Eats")
+        self.assertEqual(lead.first_party_ordering, "ChowNow")
 
     def test_csv_export_includes_call_prep_columns(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -44,8 +44,8 @@ class CallPrepFieldTests(unittest.TestCase):
                 offers_pickup=True,
                 offers_delivery=True,
                 delivery_platforms="DoorDash",
-                uses_doordash_marketing=True,
-                uses_chownow=False,
+                marketplace_providers="DoorDash",
+                first_party_ordering=None,
             )
 
             write_csv(str(path), [lead])
@@ -59,8 +59,8 @@ class CallPrepFieldTests(unittest.TestCase):
             self.assertIn("offers_pickup", rows[0])
             self.assertIn("offers_delivery", rows[0])
             self.assertIn("delivery_platforms", rows[0])
-            self.assertIn("uses_doordash_marketing", rows[0])
-            self.assertIn("uses_chownow", rows[0])
+            self.assertIn("marketplace_providers", rows[0])
+            self.assertIn("first_party_ordering", rows[0])
 
     def test_json_export_preserves_call_prep_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -75,8 +75,8 @@ class CallPrepFieldTests(unittest.TestCase):
                 offers_pickup=True,
                 offers_delivery=True,
                 delivery_platforms="Uber Eats",
-                uses_doordash_marketing=False,
-                uses_chownow=True,
+                marketplace_providers="Uber Eats",
+                first_party_ordering="ChowNow",
             )
 
             write_json(str(path), [lead])
@@ -87,6 +87,8 @@ class CallPrepFieldTests(unittest.TestCase):
             self.assertIn('"offers_pickup": true', payload)
             self.assertIn('"offers_delivery": true', payload)
             self.assertIn('"delivery_platforms": "Uber Eats"', payload)
+            self.assertIn('"marketplace_providers": "Uber Eats"', payload)
+            self.assertIn('"first_party_ordering": "ChowNow"', payload)
 
 
 if __name__ == "__main__":

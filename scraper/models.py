@@ -18,8 +18,9 @@ class LeadItem(BaseModel):
     offers_pickup: bool | None = None
     offers_delivery: bool | None = None
     delivery_platforms: str | None = None
-    uses_doordash_marketing: bool | None = None
-    uses_chownow: bool | None = None
+    marketplace_providers: str | None = None  # e.g. "DoorDash, Uber Eats"
+    first_party_ordering: str | None = None  # e.g. "ChowNow, Toast Online"
+    email: str | None = None
     business_type: str | None = None  # food_truck | single_location | multi_location | enterprise
     website_url: str | None = None
     price_range: str | None = None  # $, $$, $$$, $$$$

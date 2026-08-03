@@ -1,4 +1,5 @@
 README.md
+cli.py
 pyproject.toml
 lead_discovery_scraper.egg-info/PKG-INFO
 lead_discovery_scraper.egg-info/SOURCES.txt
@@ -10,6 +11,8 @@ lead_tools/__init__.py
 lead_tools/cli.py
 scraper/__init__.py
 scraper/adapters.py
+scraper/db.py
+scraper/enrich.py
 scraper/export.py
 scraper/fetch.py
 scraper/houston.py
@@ -18,5 +21,9 @@ scraper/parser.py
 scraper/runner.py
 tests/test_call_prep_fields.py
 tests/test_cleanup.py
+tests/test_contact_phone_migration.py
+tests/test_db.py
 tests/test_houston_adapter.py
+tests/test_lead_change_log_migration.py
+tests/test_phone_normalization.py
 tests/test_scraper.py

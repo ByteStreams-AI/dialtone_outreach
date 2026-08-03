@@ -26,6 +26,7 @@ from typing import Any
 
 import httpx
 
+from .enrich import detect_providers
 from .models import LeadItem
 
 YELP_API_URL = "https://api.yelp.com/v3/businesses/search"
@@ -152,6 +153,8 @@ def _business_to_lead(
     price_range = (biz.get("price") or "").strip() or None
     yelp_rating: float | None = biz.get("rating")
     yelp_review_count: int | None = biz.get("review_count")
+    marketplace_providers: str | None = biz.get("_marketplace_providers")
+    first_party_ordering: str | None = biz.get("_first_party_ordering")
 
     return LeadItem(
         name=name,
@@ -166,6 +169,8 @@ def _business_to_lead(
         offers_pickup=offers_pickup,
         offers_delivery=offers_delivery,
         delivery_platforms="Yelp" if offers_delivery else None,
+        marketplace_providers=marketplace_providers,
+        first_party_ordering=first_party_ordering,
         business_type=business_type,
         website_url=website_url,
         price_range=price_range,
@@ -228,6 +233,17 @@ def scrape_houston(
             if menu_url:
                 biz["website"] = menu_url
             time.sleep(0.1)  # stay well within free-tier rate limits
+
+    # ── Website enrichment (provider detection) ───────────────────────────────
+    with httpx.Client(timeout=10.0, follow_redirects=True) as web_client:
+        for biz in businesses:
+            website_url = (biz.get("website") or "").strip()
+            if not website_url:
+                continue
+            marketplace, first_party = detect_providers(website_url, web_client)
+            biz["_marketplace_providers"] = ", ".join(marketplace) if marketplace else None
+            biz["_first_party_ordering"] = ", ".join(first_party) if first_party else None
+            time.sleep(0.1)
 
     # Build set of alias bases that represent multi-location businesses.
     # Two detection signals:

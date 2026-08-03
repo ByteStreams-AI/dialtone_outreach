@@ -60,9 +60,9 @@ CREATE TABLE leads (
     has_app              BOOLEAN DEFAULT FALSE,
     offers_delivery      BOOLEAN DEFAULT FALSE,
     offers_pickup        BOOLEAN DEFAULT FALSE,
-    delivery_platforms   TEXT,           -- e.g. 'doordash,ubereats'
-    uses_doordash_mktg   BOOLEAN DEFAULT FALSE,
-    uses_chownow         BOOLEAN DEFAULT FALSE,
+    delivery_platforms   TEXT,           -- combined summary of all platforms found
+    marketplace_providers TEXT,           -- e.g. 'DoorDash, Uber Eats' (commission-based)
+    first_party_ordering  TEXT,           -- e.g. 'ChowNow, Toast Online' (owned ordering)
     uses_pos             VARCHAR(100),
     uses_kds             BOOLEAN DEFAULT FALSE,
     uses_sms             BOOLEAN DEFAULT FALSE,
